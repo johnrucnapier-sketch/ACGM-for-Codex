@@ -1,0 +1,32 @@
+{
+  "id": "acgm-codex",
+  "name": "acgm-codex",
+  "version": "0.1.0-rc.1",
+  "description": "Long-horizon coding drift control and local governance audit for Codex.",
+  "author": {
+    "name": "johnrucnapier-sketch"
+  },
+  "license": "SEE LICENSING.md",
+  "keywords": [
+    "codex",
+    "coding-governance",
+    "drift-control",
+    "local-audit",
+    "long-horizon"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "ACGM for Codex",
+    "shortDescription": "Control long-horizon coding drift in Codex.",
+    "longDescription": "ACGM for Codex provides local-first session grounding, truth-first checks, governance bootstrap, and privacy-minimized activity reporting for long-horizon coding projects.",
+    "developerName": "johnrucnapier-sketch",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Long-horizon drift control",
+      "Local governance audit",
+      "Session grounding",
+      "Privacy-minimized activity reporting"
+    ],
+    "defaultPrompt": "Audit this Codex project for governance readiness and explain the next safe action."
+  }
+}

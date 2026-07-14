@@ -1,0 +1,4 @@
+interface:
+  display_name: "ACGM Activity Report"
+  short_description: "Inspect drift events and governance health"
+  default_prompt: "Use $activity-report to explain what ACGM detected in this project."

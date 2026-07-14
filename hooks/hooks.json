@@ -1,0 +1,93 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${PLUGIN_ROOT}/scripts/acgm_codex.py\" hook session-start",
+            "timeout": 10,
+            "statusMessage": "ACGM is grounding the Codex session"
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${PLUGIN_ROOT}/scripts/acgm_codex.py\" hook subagent-start",
+            "timeout": 5,
+            "statusMessage": "ACGM is grounding the Codex subagent"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash|apply_patch|Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${PLUGIN_ROOT}/scripts/acgm_codex.py\" hook pre-tool",
+            "timeout": 5,
+            "statusMessage": "ACGM is checking the planned tool use"
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "Bash|apply_patch|Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${PLUGIN_ROOT}/scripts/acgm_codex.py\" hook permission-request",
+            "timeout": 5,
+            "statusMessage": "ACGM is recording the permission boundary"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash|apply_patch|Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${PLUGIN_ROOT}/scripts/acgm_codex.py\" hook post-tool",
+            "timeout": 5,
+            "statusMessage": "ACGM is recording the completed tool use"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "manual|auto",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${PLUGIN_ROOT}/scripts/acgm_codex.py\" hook pre-compact",
+            "timeout": 10,
+            "statusMessage": "ACGM is preserving governance state before compaction"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${PLUGIN_ROOT}/scripts/acgm_codex.py\" hook stop",
+            "timeout": 10,
+            "statusMessage": "ACGM is closing the local governance record"
+          }
+        ]
+      }
+    ]
+  }
+}

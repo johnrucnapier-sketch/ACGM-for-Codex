@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "acgm-codex"
+version = "0.1.0-rc.1"
+description = "Long-horizon coding drift control and local governance audit for Codex."
+requires-python = ">=3.10"
+authors = [
+  { name = "johnrucnapier-sketch" }
+]
+license = { text = "MIT for code; CC-BY-4.0 for documentation. See LICENSING.md." }
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Plugins",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: MacOS",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Topic :: Software Development :: Quality Assurance"
+]
+
+[tool.setuptools]
+py-modules = []

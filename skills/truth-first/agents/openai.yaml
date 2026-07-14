@@ -1,0 +1,4 @@
+interface:
+  display_name: "ACGM Truth First"
+  short_description: "Prepare and verify high-risk project changes"
+  default_prompt: "Use $truth-first to prepare and verify this high-risk change."

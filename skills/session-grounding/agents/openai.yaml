@@ -1,0 +1,4 @@
+interface:
+  display_name: "ACGM Session Grounding"
+  short_description: "Re-ground work in current repository truth"
+  default_prompt: "Use $session-grounding to re-ground this task in the current repository state."
