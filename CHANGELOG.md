@@ -1,6 +1,13 @@
 # Changelog
 
-## 0.1.0-rc.3 — unreleased
+## 0.1.0-rc.4 — 2026-07-15 tagged test candidate; pending public validation
+
+- Accept a pre-install available entry whose version is `null` only when the
+  complete persisted config, exact tag snapshot, manifest, package bytes, and
+  release contract independently prove the candidate version. A wrong explicit
+  version or missing runtime evidence remains blocked.
+
+## 0.1.0-rc.3 — 2026-07-15 tagged test candidate; not promoted
 
 - Make marketplace verification compatible with the observed Codex CLI
   `0.144.0-alpha.4` JSON contract without weakening fail-closed checks.
@@ -15,6 +22,10 @@
 - Read the stored origin without Git URL rewrites and bind the working manifest
   and inventory directly to the release tag tree, so index flags cannot disguise
   untagged package bytes as a clean release checkout.
+- Public exact-tag testing passed the stronger marketplace evidence chain but
+  found that the real CLI can enumerate the uninstalled plugin with
+  `version: null`. Verification stopped before plugin add, so RC3 was not
+  promoted to a GitHub Release or accepted runtime.
 
 ## 0.1.0-rc.2 — 2026-07-15 tagged test candidate; not promoted
 

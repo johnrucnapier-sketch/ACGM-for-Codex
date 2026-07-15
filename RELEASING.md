@@ -22,6 +22,9 @@
    field shapes. When the CLI omits a ref or an available entry, prove the exact
    persisted config plus clean tag/HEAD, origin, manifest, release contract, and
    marketplace snapshot bytes; do not promote a fixture-only interpretation.
+   Apply the same rule when a pre-install version key carries an explicit null
+   placeholder: accept that null only when independent exact-release evidence
+   supplies the version. Continue to reject a missing key or explicit conflict.
 8. Review and trust the exact Hook definitions through `/hooks`.
 9. Complete every item in `tests/manual/CODEX_E2E.md` in a disposable repository.
 10. Search real `PLUGIN_DATA` and confirm that raw prompt, path, command, remote,

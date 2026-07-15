@@ -4,7 +4,7 @@ Run this checklist only in a disposable Git repository. Capture versions and
 results, but never paste secrets into a prompt or ledger fixture.
 
 **RC status:** this checklist defines the remaining acceptance work; it has not
-yet been recorded as passed in a clean new Codex task for `0.1.0-rc.3`.
+yet been recorded as passed in a clean new Codex task for `0.1.0-rc.4`.
 
 ## 1. Package and install
 
@@ -20,8 +20,8 @@ codex plugin marketplace list --json
 codex plugin list --available --json
 ```
 
-Expected: `acgm-codex@acgm-codex` version `0.1.0-rc.3` is installed and enabled
-from the exact repository and `v0.1.0-rc.3`; bootstrap verifies its cached package
+Expected: `acgm-codex@acgm-codex` version `0.1.0-rc.4` is installed and enabled
+from the exact repository and `v0.1.0-rc.4`; bootstrap verifies its cached package
 bytes. It reports Hook trust, heartbeat, and project bootstrap as pending. Test
 legacy personal and command-failure paths only in isolated fixtures; external
 Codex state is never claimed as transactionally reversible.
@@ -43,7 +43,7 @@ Expected: no use of `--dangerously-bypass-hook-trust` is required for normal use
 Ask Codex to list the ACGM skills and run:
 
 ```bash
-ACGM="${CODEX_HOME:-$HOME/.codex}/plugins/cache/acgm-codex/acgm-codex/0.1.0-rc.3/bin/acgm-codex"
+ACGM="${CODEX_HOME:-$HOME/.codex}/plugins/cache/acgm-codex/acgm-codex/0.1.0-rc.4/bin/acgm-codex"
 "$ACGM" version
 "$ACGM" doctor . --json
 ```
