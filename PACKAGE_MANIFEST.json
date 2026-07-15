@@ -2,7 +2,7 @@
   "files": {
     ".agents/plugins/marketplace.json": "27b75d57b0f6d21a49b3e383d971b433cc44ecc99a60a1ae16d243b8c2a8d3a4",
     ".codex-plugin/plugin.json": "d9d005bed13a5333ecfa2589c0a378083ea3e7cc3a7e2e23d169e87abddafbf9",
-    ".github/workflows/ci.yml": "c811250936032b8e5a6e3330eaef5ffaf5ce1ec47f825100c9058dc1aea3f1f8",
+    ".github/workflows/ci.yml": "f9a6c31614a08e855ca4ac5f9bd77fa90cab0bc6a9b3ef5c18b4f1d1135acbf5",
     ".gitignore": "b4832ea6269dc1ab68b612e6e018a38be0a1b2ba77334ee14a404edf9b31bad0",
     "AGENTS.md": "979d5f8c402c70c5a0d13171ba5161b56f78a321fc9d5ec3f3ed97ef59c333d9",
     "ARCHITECTURE.md": "d3ac984aa0664bc3f71b3fd8e28e87438c5d610d963164d037947a03c6435145",
