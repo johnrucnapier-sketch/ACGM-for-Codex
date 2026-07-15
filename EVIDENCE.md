@@ -3,11 +3,12 @@
 This file prevents implementation activity from silently becoming a product
 claim. Promotion requires evidence at the level stated below.
 
-**Current RC status:** RC2's tag-pinned marketplace/preflight/bootstrap lifecycle
-is covered by isolated fake-Codex fixtures. A completely new Codex task has not
-yet recorded a passed `/hooks` review/trust plus real-tool E2E for RC2. Claims
-that depend on actual Hook discovery remain at “Designed / automated fixture.”
-RC1's personal install is historical evidence, not RC2 acceptance.
+**Current RC status:** RC3's tag-pinned marketplace/preflight/bootstrap lifecycle
+is covered by isolated fixtures that include the JSON shapes observed from a real
+Codex CLI. A completely new Codex task has not yet recorded a passed `/hooks`
+review/trust plus real-tool E2E for RC3. Claims that depend on actual Hook
+discovery remain at “Designed / automated fixture.” RC1's personal install is
+historical evidence, not RC3 acceptance.
 
 | Claim | Current maturity | Required next evidence |
 |---|---|---|
@@ -20,17 +21,35 @@ RC1's personal install is historical evidence, not RC2 acceptance.
 | The Event Ledger is source-minimized | Automated contract | Search the real plugin data directory after E2E |
 | ACGM reduces long-horizon drift in general | Predictive | Repeated external project trials with reviewed controls |
 
-## Local evidence recorded for this RC
+## RC2 public-bootstrap finding
 
-- RC2 automated fixtures cover fresh install, dry-run, explicit authorization,
+On 2026-07-15, a fresh isolated `HOME`/`CODEX_HOME` cloned public tag
+`v0.1.0-rc.2` at commit `4deb6d1` and ran against Codex CLI
+`0.144.0-alpha.4`. Source preflight and dry-run passed. The exact marketplace-add
+command returned zero, after which bootstrap stopped at
+`MARKETPLACE_ADDED_BUT_POSTCONDITION_UNVERIFIED` rather than claiming success.
+
+The real CLI omitted `ref` from `marketplace list --json`, returned an empty
+pre-install `available` array, and reported an installed Git plugin with source
+kind `git` rather than the fixture's assumed `url`. The exact ref was still
+present in read-only `config.toml` evidence and the clean marketplace snapshot;
+an explicitly addressed plugin add succeeded in the disposable profile. This was
+an RC2 release-tool schema mismatch and false conflict, not a Hook failure or
+damaged installation. Hook trust, heartbeat, and project bootstrap were not
+reached, and RC2 was not promoted to a GitHub Release.
+
+## Local evidence recorded for the current RC
+
+- RC3 automated fixtures cover fresh install, dry-run, explicit authorization,
   idempotence, legacy personal and duplicate conflicts, command failure/partial
   state, exact tag/manifest verification, exact cache inventory/byte
-  verification, missing marketplace, invalid available plugin state, and
-  Windows fail-closed behavior.
+  verification, missing marketplace, invalid available plugin state, the
+  observed omitted-ref/empty-available/Git-source CLI shape, tampered persisted
+  ref/snapshot evidence, and Windows fail-closed behavior.
 - Release validation must be rerun on Python 3.10 and the current Python after
   the final package manifest is regenerated.
 - RC1 historical personal install: `acgm-codex@personal` version `0.1.0-rc.1`
-  was registered and enabled locally. RC2 treats it as a migration conflict.
+  was registered and enabled locally. RC3 treats it as a migration conflict.
 - Not yet evidenced: new-task skill discovery, Hook trust, actual `SessionStart`,
   real tool interception, bounded `Stop`, compaction, or real `PLUGIN_DATA`
   privacy inspection.

@@ -20,7 +20,7 @@ class ReleaseToolTests(unittest.TestCase):
         expected = generator.build(ROOT, "auto")
         actual = json.loads((ROOT / "PACKAGE_MANIFEST.json").read_text(encoding="utf-8"))
         self.assertEqual(actual, expected)
-        self.assertEqual(actual["version"], "0.1.0-rc.2")
+        self.assertEqual(actual["version"], "0.1.0-rc.3")
         for required in (
             ".agents/plugins/marketplace.json",
             "AGENTS.md",

@@ -29,8 +29,8 @@ PLUGIN_NAME = "acgm-codex"
 MARKETPLACE_NAME = "acgm-codex"
 PLUGIN_ID = f"{PLUGIN_NAME}@{MARKETPLACE_NAME}"
 LEGACY_PLUGIN_ID = f"{PLUGIN_NAME}@personal"
-VERSION = "0.1.0-rc.2"
-TAG = "v0.1.0-rc.2"
+VERSION = "0.1.0-rc.3"
+TAG = "v0.1.0-rc.3"
 REPOSITORY = "johnrucnapier-sketch/ACGM-for-Codex"
 REPOSITORY_URL = "https://github.com/johnrucnapier-sketch/ACGM-for-Codex.git"
 SOURCE_ROOT = Path(__file__).resolve().parents[1]
@@ -239,10 +239,21 @@ def _manifest_inventory(
         if actual != digest:
             errors.append("package_file_digest_mismatch")
     if exact_git_inventory:
+        safe_env = git_environment()
         git = run_command(
-            ["git", "--no-replace-objects", "-C", str(root), "ls-files", "-z"],
+            [
+                "git",
+                "--no-replace-objects",
+                "-C",
+                str(root),
+                "ls-tree",
+                "-r",
+                "-z",
+                "--name-only",
+                f"refs/tags/{TAG}^{{commit}}",
+            ],
             root,
-            git_environment(),
+            safe_env,
             10,
         )
         if git.returncode != 0 or git.timed_out:
@@ -255,6 +266,24 @@ def _manifest_inventory(
             }
             if tracked != set(files):
                 errors.append("package_manifest_git_inventory_mismatch")
+        tagged_manifest = run_command(
+            [
+                "git",
+                "--no-replace-objects",
+                "-C",
+                str(root),
+                "cat-file",
+                "blob",
+                f"refs/tags/{TAG}^{{commit}}:{MANIFEST_NAME}",
+            ],
+            root,
+            safe_env,
+            10,
+        )
+        if tagged_manifest.returncode != 0 or tagged_manifest.timed_out:
+            errors.append("release_tag_manifest_unavailable")
+        elif tagged_manifest.stdout.encode("utf-8") != manifest_bytes:
+            errors.append("package_manifest_not_exact_release_tag")
     if exact_filesystem_inventory:
         actual: set[str] = set()
         try:
@@ -384,7 +413,17 @@ def _git_source(root: Path, env: dict[str, str], runner: Runner) -> dict[str, An
         10,
     )
     remote = runner(
-        ["git", "--no-replace-objects", "-C", str(root), "remote", "get-url", "origin"],
+        [
+            "git",
+            "--no-replace-objects",
+            "-C",
+            str(root),
+            "config",
+            "--local",
+            "--no-includes",
+            "--get-all",
+            "remote.origin.url",
+        ],
         root,
         safe_env,
         10,
@@ -399,34 +438,250 @@ def _git_source(root: Path, env: dict[str, str], runner: Runner) -> dict[str, An
         facts["error_codes"].append("git_status_unavailable")
     elif status.stdout.strip():
         facts["error_codes"].append("checkout_not_clean")
-    if remote.returncode != 0 or not _expected_repo(remote.stdout.strip()):
+    raw_origins = [line.strip() for line in remote.stdout.splitlines() if line.strip()]
+    origin_matches = (
+        remote.returncode == 0
+        and not remote.timed_out
+        and len(raw_origins) == 1
+        and _expected_repo(raw_origins[0])
+    )
+    if not origin_matches:
         facts["error_codes"].append("origin_not_expected_repository")
     facts["head"] = head.stdout.strip() if head.returncode == 0 else None
     facts["tag"] = TAG
     facts["clean"] = status.returncode == 0 and not bool(status.stdout.strip())
-    facts["origin_matches"] = remote.returncode == 0 and _expected_repo(remote.stdout.strip())
+    facts["origin_matches"] = origin_matches
     facts["verified"] = not facts["error_codes"]
     return facts
 
 
-def _marketplace_exact(item: dict[str, Any]) -> bool:
+def _codex_home(env: dict[str, str]) -> Path:
+    configured = env.get("CODEX_HOME")
+    if configured:
+        return Path(configured).expanduser()
+    home = Path(env.get("HOME", str(Path.home()))).expanduser()
+    return home / ".codex"
+
+
+def _marketplace_source(item: dict[str, Any]) -> dict[str, Any]:
     source = item.get("marketplaceSource")
     if not isinstance(source, dict):
         source = item.get("source") if isinstance(item.get("source"), dict) else {}
+    return source
+
+
+def _marketplace_identity_exact(item: dict[str, Any]) -> bool:
+    source = _marketplace_source(item)
     source_type = source.get("sourceType", source.get("source_type"))
     raw_source = source.get("source", source.get("url"))
-    return (
-        source_type == "git"
-        and _expected_repo(raw_source)
-        and source.get("ref") == TAG
+    return source_type == "git" and _expected_repo(raw_source)
+
+
+def _marketplace_reported_ref(item: dict[str, Any]) -> object:
+    return _marketplace_source(item).get("ref")
+
+
+def _toml_multiline_after_line(line: str, active: str | None) -> str | None:
+    """Track TOML multiline strings so embedded fake headers are never parsed."""
+
+    def closing_index(delimiter: str, start: int) -> int | None:
+        position = line.find(delimiter, start)
+        while position >= 0:
+            if delimiter == "'''":
+                return position
+            backslashes = 0
+            cursor = position - 1
+            while cursor >= 0 and line[cursor] == "\\":
+                backslashes += 1
+                cursor -= 1
+            if backslashes % 2 == 0:
+                return position
+            position = line.find(delimiter, position + 1)
+        return None
+
+    if active is not None:
+        return None if closing_index(active, 0) is not None else active
+
+    simple_quote: str | None = None
+    index = 0
+    while index < len(line):
+        character = line[index]
+        if simple_quote is not None:
+            if simple_quote == '"' and character == "\\":
+                index += 2
+                continue
+            if character == simple_quote:
+                simple_quote = None
+            index += 1
+            continue
+        if character == "#":
+            break
+        delimiter = None
+        if line.startswith('"""', index):
+            delimiter = '"""'
+        elif line.startswith("'''", index):
+            delimiter = "'''"
+        if delimiter is not None:
+            close = closing_index(delimiter, index + 3)
+            if close is None:
+                return delimiter
+            index = close + 3
+            continue
+        if character in {'"', "'"}:
+            simple_quote = character
+        index += 1
+    return None
+
+
+def _marketplace_config_evidence(codex_home: Path) -> dict[str, Any]:
+    """Read only the simple table shape currently emitted by the Codex CLI.
+
+    Python 3.10 has no stdlib TOML parser.  This deliberately narrow parser
+    accepts the exact string assignments emitted for one marketplace and fails
+    closed on duplicate sections, duplicate keys, multiline/complex values, or
+    an unreadable/symlinked config file.  It never edits the user's config.
+    """
+
+    errors: list[str] = []
+    try:
+        text = _regular_bytes(codex_home / "config.toml").decode("utf-8")
+    except (OSError, ValueError, UnicodeDecodeError):
+        return {
+            "verified": False,
+            "error_codes": ["marketplace_config_missing_or_unreadable"],
+            "source_matches": False,
+            "ref_matches": False,
+        }
+    header_pattern = re.compile(r"^\s*\[\s*([^\]]+?)\s*\]\s*(?:#.*)?$")
+    assignment_pattern = re.compile(
+        r'^\s*([A-Za-z_][A-Za-z0-9_-]*)\s*=\s*"([^"\\]*)"\s*(?:#.*)?$'
     )
+    section_count = 0
+    in_target = False
+    multiline: str | None = None
+    values: dict[str, str] = {}
+    for raw_line in text.splitlines():
+        if multiline is not None:
+            multiline = _toml_multiline_after_line(raw_line, multiline)
+            continue
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        header = header_pattern.fullmatch(raw_line)
+        if header:
+            in_target = header.group(1).strip() == f"marketplaces.{MARKETPLACE_NAME}"
+            if in_target:
+                section_count += 1
+            continue
+        if not in_target:
+            multiline = _toml_multiline_after_line(raw_line, None)
+            continue
+        assignment = assignment_pattern.fullmatch(raw_line)
+        if assignment is None:
+            errors.append("marketplace_config_target_table_shape_invalid")
+            multiline = _toml_multiline_after_line(raw_line, None)
+            continue
+        key, decoded = assignment.groups()
+        if key in values:
+            errors.append("marketplace_config_duplicate_key")
+            continue
+        values[key] = decoded
+    if multiline is not None:
+        errors.append("marketplace_config_unterminated_multiline_value")
+    if section_count != 1:
+        errors.append("marketplace_config_section_missing_or_duplicate")
+    source_matches = (
+        values.get("source_type") == "git" and _expected_repo(values.get("source"))
+    )
+    ref_matches = values.get("ref") == TAG
+    if not source_matches or not ref_matches:
+        errors.append("marketplace_config_source_or_ref_conflict")
+    return {
+        "verified": not errors,
+        "error_codes": sorted(set(errors)),
+        "source_matches": source_matches,
+        "ref_matches": ref_matches,
+    }
+
+
+def _marketplace_runtime_evidence(
+    item: dict[str, Any],
+    *,
+    source_root: Path,
+    env: dict[str, str],
+    runner: Runner,
+) -> dict[str, Any]:
+    """Verify the omitted Git ref from config plus the exact cached checkout."""
+
+    errors: list[str] = []
+    codex_home = _codex_home(env)
+    expected_root = codex_home / ".tmp" / "marketplaces" / MARKETPLACE_NAME
+    reported_root = item.get("root")
+    root_matches = False
+    cache_root = expected_root
+    if isinstance(reported_root, str) and reported_root:
+        try:
+            cache_root = Path(reported_root).expanduser().resolve(strict=True)
+            root_matches = cache_root == expected_root.resolve(strict=True)
+        except OSError:
+            root_matches = False
+    if not root_matches:
+        errors.append("marketplace_snapshot_root_missing_or_unexpected")
+
+    config = _marketplace_config_evidence(codex_home)
+    errors.extend(config["error_codes"])
+    if root_matches:
+        git = _git_source(cache_root, env, runner)
+        package = verify_package(
+            cache_root,
+            exact_git_inventory=True,
+            exact_filesystem_inventory=True,
+        )
+        release_contract = verify_release_contract(cache_root)
+        errors.extend(f"snapshot_{code}" for code in git["error_codes"])
+        errors.extend(f"snapshot_{code}" for code in package["error_codes"])
+        errors.extend(
+            f"snapshot_{code}" for code in release_contract["error_codes"]
+        )
+        try:
+            same_manifest = _regular_bytes(source_root / MANIFEST_NAME) == _regular_bytes(
+                cache_root / MANIFEST_NAME
+            )
+        except (OSError, ValueError):
+            same_manifest = False
+        if not same_manifest:
+            errors.append("marketplace_snapshot_manifest_differs_from_source")
+    else:
+        git = {"verified": False}
+        package = {"verified": False}
+        release_contract = {"verified": False}
+        same_manifest = False
+    return {
+        "verified": not errors,
+        "error_codes": sorted(set(errors)),
+        "config": config,
+        "root_matches": root_matches,
+        "git_verified": bool(git.get("verified")),
+        "package_verified": bool(package.get("verified")),
+        "release_contract_verified": bool(release_contract.get("verified")),
+        "manifest_matches_source": same_manifest,
+    }
+
+
+def _marketplace_exact(item: dict[str, Any], runtime_verified: bool) -> bool:
+    if not _marketplace_identity_exact(item):
+        return False
+    reported_ref = _marketplace_reported_ref(item)
+    if reported_ref is not None:
+        return reported_ref == TAG
+    return runtime_verified
 
 
 def _plugin_source_exact(item: dict[str, Any]) -> bool:
     source = item.get("source")
     return bool(
         isinstance(source, dict)
-        and source.get("source") == "url"
+        and source.get("source") in {"git", "url"}
         and _expected_repo(source.get("url"))
         and source.get("ref") == TAG
     )
@@ -454,13 +709,32 @@ def inspect_codex_state(
             "plugin": "UNKNOWN",
             "cache_verified": False,
         }
-    marketplaces = marketplace_payload.get("marketplaces", [])
-    installed = plugin_payload.get("installed", [])
-    available = plugin_payload.get("available", [])
+    marketplaces = marketplace_payload.get("marketplaces")
+    installed = plugin_payload.get("installed")
+    available = plugin_payload.get("available")
     if not all(isinstance(value, list) for value in (marketplaces, installed, available)):
         return {
             "readable": False,
             "error_codes": ["codex_state_json_shape_invalid"],
+            "marketplace": "UNKNOWN",
+            "plugin": "UNKNOWN",
+            "cache_verified": False,
+        }
+    if (
+        any(
+            not isinstance(item, dict) or not isinstance(item.get("name"), str)
+            for item in marketplaces
+        )
+        or any(
+            not isinstance(item, dict)
+            or not isinstance(item.get("name"), str)
+            or not isinstance(item.get("pluginId"), str)
+            for item in [*installed, *available]
+        )
+    ):
+        return {
+            "readable": False,
+            "error_codes": ["codex_state_json_entry_shape_invalid"],
             "marketplace": "UNKNOWN",
             "plugin": "UNKNOWN",
             "cache_verified": False,
@@ -470,18 +744,36 @@ def inspect_codex_state(
         for item in marketplaces
         if isinstance(item, dict) and item.get("name") == MARKETPLACE_NAME
     ]
+    marketplace_evidence: dict[str, Any] | None = None
+    runtime_verified = False
+    if (
+        len(marketplace_matches) == 1
+        and _marketplace_identity_exact(marketplace_matches[0])
+        and _marketplace_reported_ref(marketplace_matches[0]) is None
+    ):
+        marketplace_evidence = _marketplace_runtime_evidence(
+            marketplace_matches[0],
+            source_root=source_root,
+            env=env,
+            runner=runner,
+        )
+        runtime_verified = bool(marketplace_evidence["verified"])
     plugin_matches = [
         item
         for item in [*installed, *available]
-        if isinstance(item, dict) and item.get("name") == PLUGIN_NAME
+        if item.get("name") == PLUGIN_NAME
+        or item.get("pluginId") in {PLUGIN_ID, LEGACY_PLUGIN_ID}
+        or item.get("pluginId", "").startswith(f"{PLUGIN_NAME}@")
     ]
     installed_matches = [
         item
         for item in installed
-        if isinstance(item, dict) and item.get("name") == PLUGIN_NAME
+        if item in plugin_matches
     ]
     errors: list[str] = []
-    if marketplace_matches and all(_marketplace_exact(item) for item in marketplace_matches):
+    if marketplace_matches and all(
+        _marketplace_exact(item, runtime_verified) for item in marketplace_matches
+    ):
         marketplace_state = "EXACT"
     elif marketplace_matches:
         marketplace_state = "CONFLICT"
@@ -492,7 +784,9 @@ def inspect_codex_state(
         errors.append("legacy_personal_install_requires_manual_migration")
     if len(marketplace_matches) > 1:
         errors.append("duplicate_marketplace_entries")
-    if marketplace_matches and not all(_marketplace_exact(item) for item in marketplace_matches):
+    if marketplace_matches and not all(
+        _marketplace_exact(item, runtime_verified) for item in marketplace_matches
+    ):
         errors.append("marketplace_source_or_ref_conflict")
     foreign_plugins = [
         item for item in plugin_matches if item.get("pluginId") != PLUGIN_ID
@@ -503,7 +797,7 @@ def inspect_codex_state(
     exact_available = [
         item
         for item in available
-        if isinstance(item, dict) and item.get("pluginId") == PLUGIN_ID
+        if item.get("pluginId") == PLUGIN_ID
     ]
     if len(exact_installed) > 1:
         errors.append("duplicate_exact_plugin_install")
@@ -512,7 +806,8 @@ def inspect_codex_state(
     installed_item = exact_installed[0] if len(exact_installed) == 1 else None
     available_item = exact_available[0] if len(exact_available) == 1 else None
     if installed_item is not None and (
-        installed_item.get("version") != VERSION
+        installed_item.get("name") != PLUGIN_NAME
+        or installed_item.get("version") != VERSION
         or installed_item.get("installed") is not True
         or installed_item.get("enabled") is not True
         or installed_item.get("scope") not in {None, "user"}
@@ -532,15 +827,16 @@ def inspect_codex_state(
     if available_item is not None and not available_item_exact:
         errors.append("available_plugin_identity_version_or_source_conflict")
     if marketplace_state == "EXACT" and installed_item is None:
-        if available_item is None:
+        if available_item is None and not runtime_verified:
             errors.append("marketplace_expected_plugin_missing")
         elif not available_item_exact:
-            errors.append("marketplace_expected_plugin_invalid")
+            if available_item is not None:
+                errors.append("marketplace_expected_plugin_invalid")
 
     cache_verified = False
     cache_check: dict[str, Any] | None = None
     if installed_item is not None and not errors:
-        codex_home = Path(env.get("CODEX_HOME", str(Path(env.get("HOME", "~")).expanduser() / ".codex")))
+        codex_home = _codex_home(env)
         cache = codex_home / "plugins" / "cache" / MARKETPLACE_NAME / PLUGIN_NAME / VERSION
         cache_check = verify_package(
             cache,
@@ -563,6 +859,8 @@ def inspect_codex_state(
         plugin_state = "CONFLICT_OR_PARTIAL"
     elif plugin_matches:
         plugin_state = "AVAILABLE_EXACT" if available_item_exact and not errors else "CONFLICT"
+    elif marketplace_state == "EXACT" and runtime_verified:
+        plugin_state = "AVAILABLE_NOT_ENUMERATED"
     else:
         plugin_state = "ABSENT"
     return {
@@ -573,6 +871,7 @@ def inspect_codex_state(
         "cache_verified": cache_verified,
         "cache_check": cache_check,
         "legacy_personal_present": legacy,
+        "marketplace_runtime_evidence": marketplace_evidence,
     }
 
 

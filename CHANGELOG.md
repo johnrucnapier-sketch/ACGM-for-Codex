@@ -1,6 +1,22 @@
 # Changelog
 
-## 0.1.0-rc.2 — unreleased
+## 0.1.0-rc.3 — unreleased
+
+- Make marketplace verification compatible with the observed Codex CLI
+  `0.144.0-alpha.4` JSON contract without weakening fail-closed checks.
+- When `marketplace list` omits the configured Git ref, verify the unique CLI
+  identity together with the read-only `config.toml` entry and the exact clean,
+  tag-pinned marketplace snapshot, release contract, manifest, and package bytes.
+- Treat an empty pre-install `available` list as “not enumerated” only when that
+  stronger evidence chain passes; explicit source/ref conflicts and any missing,
+  dirty, mistagged, or byte-mismatched evidence remain blocked.
+- Accept the installed plugin source kind actually reported by Codex (`git`) while
+  retaining exact repository/ref, version, enabled-state, and cache-byte checks.
+- Read the stored origin without Git URL rewrites and bind the working manifest
+  and inventory directly to the release tag tree, so index flags cannot disguise
+  untagged package bytes as a clean release checkout.
+
+## 0.1.0-rc.2 — 2026-07-15 tagged test candidate; not promoted
 
 - Add a root Agent installation bridge and bilingual public install contract.
 - Replace the public personal-copy flow with a tag-pinned Git marketplace and a
@@ -17,6 +33,10 @@
 - Separate download/configuration, install/enablement, Hook trust, fresh-task
   heartbeat, and project bootstrap claims. Windows remains blocked because the
   runtime still requires POSIX `fcntl`.
+- Public exact-tag testing found that the bootstrap fixtures assumed fields the
+  real CLI did not enumerate. Marketplace add itself succeeded and fail-closed
+  verification stopped before plugin add; RC2 was therefore not promoted to a
+  GitHub Release or accepted runtime.
 
 ## 0.1.0-rc.1 — unreleased
 

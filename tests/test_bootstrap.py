@@ -264,6 +264,131 @@ class FakeCodex:
         return preflight.CommandResult(127, stderr="unexpected fake command")
 
 
+class ObservedCodex0144:
+    """Reproduce the marketplace/plugin JSON observed from Codex CLI 0.144.
+
+    The marketplace list omits ``ref`` and the plugin list does not enumerate an
+    uninstalled available plugin.  After installation, the source kind is
+    reported as ``git``.  Config and cached Git/package evidence carry the
+    omitted release-ref proof.
+    """
+
+    def __init__(self, source: Path, env: dict[str, str]) -> None:
+        self.source = source
+        self.env = env
+        self.marketplace = False
+        self.installed = False
+        self.installed_name = preflight.PLUGIN_NAME
+        self.plugin_payload_override: dict[str, object] | None = None
+        self.mutations: list[list[str]] = []
+
+    @property
+    def codex_home(self) -> Path:
+        return Path(self.env["CODEX_HOME"])
+
+    @property
+    def marketplace_root(self) -> Path:
+        return self.codex_home / ".tmp" / "marketplaces" / preflight.MARKETPLACE_NAME
+
+    def add_marketplace(self) -> None:
+        self.codex_home.mkdir(parents=True, exist_ok=True)
+        self.marketplace_root.parent.mkdir(parents=True, exist_ok=True)
+        if self.marketplace_root.exists():
+            shutil.rmtree(self.marketplace_root)
+        shutil.copytree(self.source, self.marketplace_root)
+        (self.codex_home / "config.toml").write_text(
+            "\n".join(
+                [
+                    f"[marketplaces.{preflight.MARKETPLACE_NAME}]",
+                    'last_updated = "2026-07-15T00:00:00Z"',
+                    'source_type = "git"',
+                    f'source = "{preflight.REPOSITORY_URL}"',
+                    f'ref = "{preflight.TAG}"',
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        self.marketplace = True
+
+    def add_plugin(self) -> None:
+        cache = (
+            self.codex_home
+            / "plugins"
+            / "cache"
+            / preflight.MARKETPLACE_NAME
+            / preflight.PLUGIN_NAME
+            / preflight.VERSION
+        )
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        if cache.exists():
+            shutil.rmtree(cache)
+        shutil.copytree(self.source, cache, ignore=shutil.ignore_patterns(".git"))
+        self.installed = True
+
+    def __call__(
+        self, argv: list[str] | tuple[str, ...], cwd: Path | None, env: dict[str, str], timeout: int
+    ) -> preflight.CommandResult:
+        args = list(argv)
+        if args[0] == "git":
+            return preflight.run_command(args, cwd, env, timeout)
+        if args[-1:] == ["--help"]:
+            if args[1:4] == ["plugin", "marketplace", "add"]:
+                return preflight.CommandResult(0, "--ref --json")
+            if args[1:3] == ["plugin", "add"]:
+                return preflight.CommandResult(0, "--json")
+            if args[1:3] == ["plugin", "list"]:
+                return preflight.CommandResult(0, "--available --json")
+        if args == ["codex", "plugin", "marketplace", "list", "--json"]:
+            marketplaces = []
+            if self.marketplace:
+                marketplaces.append(
+                    {
+                        "name": preflight.MARKETPLACE_NAME,
+                        "root": str(self.marketplace_root),
+                        "marketplaceSource": {
+                            "sourceType": "git",
+                            "source": preflight.REPOSITORY_URL,
+                        },
+                    }
+                )
+            return preflight.CommandResult(0, json.dumps({"marketplaces": marketplaces}))
+        if args == ["codex", "plugin", "list", "--available", "--json"]:
+            if self.plugin_payload_override is not None:
+                return preflight.CommandResult(
+                    0, json.dumps(self.plugin_payload_override)
+                )
+            installed = []
+            if self.installed:
+                installed.append(
+                    {
+                        "pluginId": preflight.PLUGIN_ID,
+                        "name": self.installed_name,
+                        "marketplaceName": preflight.MARKETPLACE_NAME,
+                        "version": preflight.VERSION,
+                        "installed": True,
+                        "enabled": True,
+                        "source": {
+                            "source": "git",
+                            "url": preflight.REPOSITORY_URL,
+                            "ref": preflight.TAG,
+                        },
+                    }
+                )
+            return preflight.CommandResult(
+                0, json.dumps({"installed": installed, "available": []})
+            )
+        if args == bootstrap.MARKETPLACE_ADD:
+            self.mutations.append(args)
+            self.add_marketplace()
+            return preflight.CommandResult(0, "{}")
+        if args == bootstrap.PLUGIN_ADD:
+            self.mutations.append(args)
+            self.add_plugin()
+            return preflight.CommandResult(0, "{}")
+        return preflight.CommandResult(127, stderr="unexpected observed command")
+
+
 class BootstrapTests(unittest.TestCase):
     def fixture(self) -> tuple[tempfile.TemporaryDirectory[str], Path, dict[str, str]]:
         temp = tempfile.TemporaryDirectory()
@@ -337,6 +462,205 @@ class BootstrapTests(unittest.TestCase):
             )
             self.assertTrue(again["idempotent"])
             self.assertEqual(fake.mutations, [bootstrap.MARKETPLACE_ADD, bootstrap.PLUGIN_ADD])
+
+    def test_observed_cli_0144_shape_completes_verified_install(self) -> None:
+        temp, source, env = self.fixture()
+        with temp:
+            fake = ObservedCodex0144(source, env)
+            result = bootstrap.execute(
+                source, dry_run=False, authorized=True, env=env, runner=fake
+            )
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["status"], "INSTALLED_ENABLED_PENDING_HOOK_TRUST")
+            self.assertEqual(fake.mutations, [bootstrap.MARKETPLACE_ADD, bootstrap.PLUGIN_ADD])
+            intermediate = result["after_marketplace_add"]
+            self.assertEqual(intermediate["status"], "READY_FOR_PLUGIN_ADD")
+            self.assertEqual(
+                intermediate["codex"]["plugin"], "AVAILABLE_NOT_ENUMERATED"
+            )
+            self.assertTrue(
+                intermediate["codex"]["marketplace_runtime_evidence"]["verified"]
+            )
+            self.assertEqual(result["lifecycle"]["package_bytes"], "VERIFIED")
+
+    def test_observed_cli_0144_missing_or_tampered_ref_evidence_fails_closed(self) -> None:
+        cases = (
+            "missing_config",
+            "multiline_config_spoof",
+            "duplicate_config_section",
+            "invalid_toml_escape",
+            "wrong_config_ref",
+            "wrong_snapshot_origin",
+            "wrong_snapshot_head",
+            "dirty_snapshot",
+            "tampered_snapshot_bytes",
+        )
+        for case in cases:
+            with self.subTest(case=case):
+                temp, source, env = self.fixture()
+                with temp:
+                    fake = ObservedCodex0144(source, env)
+                    fake.add_marketplace()
+                    if case == "missing_config":
+                        (fake.codex_home / "config.toml").unlink()
+                    elif case == "multiline_config_spoof":
+                        (fake.codex_home / "config.toml").write_text(
+                            "\n".join(
+                                [
+                                    'decoy = """',
+                                    f"[marketplaces.{preflight.MARKETPLACE_NAME}]",
+                                    'source_type = "git"',
+                                    f'source = "{preflight.REPOSITORY_URL}"',
+                                    f'ref = "{preflight.TAG}"',
+                                    '"""',
+                                    "",
+                                ]
+                            ),
+                            encoding="utf-8",
+                        )
+                    elif case == "duplicate_config_section":
+                        config = fake.codex_home / "config.toml"
+                        config.write_text(
+                            config.read_text(encoding="utf-8")
+                            + f"\n[marketplaces.{preflight.MARKETPLACE_NAME}]\n"
+                            + f'ref = "{preflight.TAG}"\n',
+                            encoding="utf-8",
+                        )
+                    elif case == "invalid_toml_escape":
+                        config = fake.codex_home / "config.toml"
+                        config.write_text(
+                            config.read_text(encoding="utf-8").replace(
+                                "https://", "https:\\/\\/"
+                            ),
+                            encoding="utf-8",
+                        )
+                    elif case == "wrong_config_ref":
+                        config = fake.codex_home / "config.toml"
+                        config.write_text(
+                            config.read_text(encoding="utf-8").replace(
+                                f'ref = "{preflight.TAG}"', 'ref = "main"'
+                            ),
+                            encoding="utf-8",
+                        )
+                    elif case == "wrong_snapshot_origin":
+                        command(
+                            [
+                                "git",
+                                "remote",
+                                "set-url",
+                                "origin",
+                                "https://github.com/unknown/source.git",
+                            ],
+                            fake.marketplace_root,
+                        )
+                    elif case == "wrong_snapshot_head":
+                        (fake.marketplace_root / "payload.txt").write_text(
+                            "new untagged commit\n", encoding="utf-8"
+                        )
+                        command(["git", "add", "payload.txt"], fake.marketplace_root)
+                        command(["git", "commit", "-m", "untagged"], fake.marketplace_root)
+                    elif case == "dirty_snapshot":
+                        (fake.marketplace_root / "untracked.txt").write_text(
+                            "unexpected\n", encoding="utf-8"
+                        )
+                    elif case == "tampered_snapshot_bytes":
+                        (fake.marketplace_root / "payload.txt").write_text(
+                            "tampered\n", encoding="utf-8"
+                        )
+                    result = bootstrap.execute(
+                        source, dry_run=False, authorized=True, env=env, runner=fake
+                    )
+                    self.assertFalse(result["ok"])
+                    self.assertIn(result["status"], {"BLOCKED", "MIGRATION_REQUIRED"})
+                    self.assertEqual(fake.mutations, [])
+                    evidence = result["preflight"]["codex"][
+                        "marketplace_runtime_evidence"
+                    ]
+                    self.assertFalse(evidence["verified"])
+                    self.assertTrue(evidence["error_codes"])
+
+    def test_malformed_json_or_hidden_exact_plugin_identity_fails_closed(self) -> None:
+        temp, source, env = self.fixture()
+        with temp:
+            fake = ObservedCodex0144(source, env)
+            fake.add_marketplace()
+            fake.plugin_payload_override = {}
+            result = preflight.evaluate(source, env=env, runner=fake)
+            self.assertEqual(result["status"], "BLOCKED")
+            self.assertIn("codex_state_json_shape_invalid", result["error_codes"])
+
+        temp, source, env = self.fixture()
+        with temp:
+            fake = ObservedCodex0144(source, env)
+            fake.add_marketplace()
+            fake.add_plugin()
+            fake.installed_name = "not-acgm-codex"
+            result = preflight.evaluate(source, env=env, runner=fake)
+            self.assertNotEqual(result["status"], "READY_FOR_PLUGIN_ADD")
+            self.assertIn(
+                "installed_plugin_identity_version_or_source_conflict",
+                result["error_codes"],
+            )
+
+    def test_unrelated_multiline_toml_cannot_spoof_or_block_real_section(self) -> None:
+        temp, source, env = self.fixture()
+        with temp:
+            fake = ObservedCodex0144(source, env)
+            fake.add_marketplace()
+            config = fake.codex_home / "config.toml"
+            decoy = "\n".join(
+                [
+                    'unrelated = """',
+                    f"[marketplaces.{preflight.MARKETPLACE_NAME}]",
+                    'source_type = "git"',
+                    'source = "https://github.com/unknown/source.git"',
+                    'ref = "main"',
+                    '"""',
+                    "",
+                ]
+            )
+            config.write_text(decoy + config.read_text(encoding="utf-8"), encoding="utf-8")
+            result = preflight.evaluate(source, env=env, runner=fake)
+            self.assertEqual(result["status"], "READY_FOR_PLUGIN_ADD")
+            self.assertTrue(
+                result["codex"]["marketplace_runtime_evidence"]["verified"]
+            )
+
+    def test_explicit_ref_and_installed_source_contract_remain_strict(self) -> None:
+        marketplace = {
+            "marketplaceSource": {
+                "sourceType": "git",
+                "source": preflight.REPOSITORY_URL,
+                "ref": "main",
+            }
+        }
+        self.assertFalse(preflight._marketplace_exact(marketplace, True))
+        for source_kind in ("git", "url"):
+            with self.subTest(source_kind=source_kind):
+                self.assertTrue(
+                    preflight._plugin_source_exact(
+                        {
+                            "source": {
+                                "source": source_kind,
+                                "url": preflight.REPOSITORY_URL,
+                                "ref": preflight.TAG,
+                            }
+                        }
+                    )
+                )
+        for source in (
+            {
+                "source": "local",
+                "path": "/tmp/untrusted",
+            },
+            {
+                "source": "git",
+                "url": preflight.REPOSITORY_URL,
+                "ref": "main",
+            },
+        ):
+            with self.subTest(source=source):
+                self.assertFalse(preflight._plugin_source_exact({"source": source}))
 
     def test_legacy_personal_and_duplicate_are_fail_closed(self) -> None:
         for field in ("legacy", "duplicate"):
@@ -474,6 +798,70 @@ class BootstrapTests(unittest.TestCase):
             result = preflight.evaluate(source, env=env, runner=fake)
             self.assertEqual(result["status"], "BLOCKED")
             self.assertIn("package_file_digest_mismatch", result["error_codes"])
+
+    def test_raw_origin_cannot_be_hidden_by_instead_of_rewrite(self) -> None:
+        temp, source, env = self.fixture()
+        with temp:
+            command(
+                ["git", "config", "remote.origin.url", "evil:ACGM-for-Codex.git"],
+                source,
+            )
+            command(
+                [
+                    "git",
+                    "config",
+                    "url.https://github.com/johnrucnapier-sketch/.insteadOf",
+                    "evil:",
+                ],
+                source,
+            )
+            rewritten = subprocess.run(
+                ["git", "remote", "get-url", "origin"],
+                cwd=source,
+                check=True,
+                text=True,
+                stdout=subprocess.PIPE,
+            ).stdout.strip()
+            self.assertEqual(rewritten, preflight.REPOSITORY_URL)
+            result = preflight.evaluate(source, env=env, runner=FakeCodex(source, env))
+            self.assertEqual(result["status"], "BLOCKED")
+            self.assertIn("origin_not_expected_repository", result["error_codes"])
+
+    def test_assume_unchanged_cannot_replace_tag_bound_manifest_and_bytes(self) -> None:
+        temp, source, env = self.fixture()
+        with temp:
+            replacement = b"self-consistent but not tagged\n"
+            (source / "payload.txt").write_bytes(replacement)
+            manifest_path = source / preflight.MANIFEST_NAME
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["files"]["payload.txt"] = hashlib.sha256(replacement).hexdigest()
+            manifest_path.write_text(
+                json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            command(
+                [
+                    "git",
+                    "update-index",
+                    "--assume-unchanged",
+                    "payload.txt",
+                    preflight.MANIFEST_NAME,
+                ],
+                source,
+            )
+            status = subprocess.run(
+                ["git", "status", "--porcelain=v1"],
+                cwd=source,
+                check=True,
+                text=True,
+                stdout=subprocess.PIPE,
+            ).stdout
+            self.assertEqual(status, "")
+            result = preflight.evaluate(source, env=env, runner=FakeCodex(source, env))
+            self.assertEqual(result["status"], "BLOCKED")
+            self.assertIn(
+                "package_manifest_not_exact_release_tag", result["error_codes"]
+            )
 
 
 if __name__ == "__main__":

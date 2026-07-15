@@ -8,7 +8,7 @@ ACGM for Codex 是 ACGM（Agent Coding Governance Methodology）的独立 Codex
 
 [English](README.en.md)
 
-> **当前状态：`0.1.0-rc.2`。** 这是公开预览候选版，不是稳定发行版。自动测试可以证明
+> **当前状态：`0.1.0-rc.3`。** 这是公开预览候选版，不是稳定发行版。自动测试可以证明
 > 包结构和运行时行为；只有完成全新 Codex task 中的 Hook 信任与真实工具调用 E2E 后，
 > 才能声称自动机制已在当前 Codex 版本上运行。
 
@@ -63,7 +63,7 @@ recursive forced delete 的已识别写法。被识别为高风险、但包含 s
 只提供仓库名或 URL 仅授权下载与只读检查，不等于授权修改用户配置。先克隆准确 tag：
 
 ```bash
-git clone --branch v0.1.0-rc.2 --depth 1 \
+git clone --branch v0.1.0-rc.3 --depth 1 \
   https://github.com/johnrucnapier-sketch/ACGM-for-Codex.git
 cd ACGM-for-Codex
 python3 scripts/preflight.py --json
@@ -78,7 +78,7 @@ python3 scripts/bootstrap.py --authorize-install --json
 
 如果希望“一句话交给 Agent”，可以把授权写完整：
 
-> 只从 `johnrucnapier-sketch/ACGM-for-Codex` 克隆 `v0.1.0-rc.2`，读取
+> 只从 `johnrucnapier-sketch/ACGM-for-Codex` 克隆 `v0.1.0-rc.3`，读取
 > `AGENTS.md` 与 `INSTALL.md`，运行 preflight 和 dry-run；如果源码、manifest、现有安装
 > 状态与文档中的两个固定 Codex 命令完全一致，我明确授权执行这两个用户级插件配置命令。
 > 安装验证后停在 Hook trust，不得迁移旧 personal 版或读取 Event Ledger。
@@ -86,7 +86,7 @@ python3 scripts/bootstrap.py --authorize-install --json
 这段完整指令允许 Agent 连续下载、检查、安装和验证；只贴 URL 仍然只代表允许检查。
 
 Bootstrap 只调用固定的官方命令：`codex plugin marketplace add
-johnrucnapier-sketch/ACGM-for-Codex --ref v0.1.0-rc.2 --json` 与 `codex plugin
+johnrucnapier-sketch/ACGM-for-Codex --ref v0.1.0-rc.3 --json` 与 `codex plugin
 add acgm-codex@acgm-codex --json`。之后独立核对 marketplace source/ref、插件
 name/version/enabled 和 cache package bytes；外部命令中途失败会报告 partial state，不会
 声称已回滚。
@@ -108,7 +108,7 @@ bootstrap 不会自动卸载、覆盖、吸收或搬运私有 `PLUGIN_DATA` / Ev
 公共安装不会给 shell `PATH` 增加 wrapper；skill 会从已安装插件根目录解析 launcher。
 `scripts/install_local.py` 仅供维护者在隔离 HOME 中测试旧 personal 开发路径。
 
-RC2 仅支持 macOS/Linux 与 Python 3.10+。Windows 明确 BLOCKED：当前 runtime 仍依赖
+RC3 仅支持 macOS/Linux 与 Python 3.10+。Windows 明确 BLOCKED：当前 runtime 仍依赖
 POSIX `fcntl` 锁；Windows Codex app 支持插件不等于本 runtime 已可移植或通过 E2E。
 
 ## 在项目中启用
