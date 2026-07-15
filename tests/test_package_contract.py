@@ -8,6 +8,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_PATH = ROOT / ".codex-plugin" / "plugin.json"
+MARKETPLACE_PATH = ROOT / ".agents" / "plugins" / "marketplace.json"
 HOOK_PATH = ROOT / "hooks" / "hooks.json"
 VERSION_PATTERN = re.compile(
     r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
@@ -81,6 +82,62 @@ class PackageContractTests(unittest.TestCase):
         self.assertEqual(interface.get("displayName"), "ACGM for Codex")
         self.assertEqual(interface.get("developerName"), "johnrucnapier-sketch")
         self.assertTrue(interface.get("defaultPrompt"))
+
+    def test_public_marketplace_is_tag_pinned_and_policy_complete(self) -> None:
+        marketplace = read_json(MARKETPLACE_PATH)
+        self.assertEqual(marketplace.get("name"), "acgm-codex")
+        self.assertEqual(marketplace.get("interface", {}).get("displayName"), "ACGM for Codex")
+        plugins = marketplace.get("plugins")
+        self.assertIsInstance(plugins, list)
+        self.assertEqual(len(plugins), 1)
+        entry = plugins[0]
+        self.assertEqual(entry.get("name"), "acgm-codex")
+        self.assertEqual(
+            entry.get("source"),
+            {
+                "source": "url",
+                "url": "https://github.com/johnrucnapier-sketch/ACGM-for-Codex.git",
+                "ref": "v0.1.0-rc.2",
+            },
+        )
+        self.assertEqual(
+            entry.get("policy"),
+            {"installation": "AVAILABLE", "authentication": "ON_INSTALL"},
+        )
+        self.assertEqual(entry.get("category"), "Developer Tools")
+
+    def test_agent_install_bridge_preserves_authorization_and_task_boundaries(self) -> None:
+        agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+        install = (ROOT / "INSTALL.md").read_text(encoding="utf-8")
+        for required in (
+            "URL",
+            "explicit",
+            "scripts/preflight.py --json",
+            "--authorize-install",
+            "/hooks",
+            "new Codex discovery task",
+            "second new verification task",
+            "Windows",
+        ):
+            self.assertIn(required, agents + "\n" + install)
+        architecture = (ROOT / "ARCHITECTURE.md").read_text(encoding="utf-8").lower()
+        self.assertIn("windows claim requires", architecture)
+
+    def test_ci_matrix_covers_supported_and_blocked_platform_contracts(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(
+            encoding="utf-8"
+        )
+        for required in (
+            "ubuntu-latest",
+            "macos-latest",
+            "windows-latest",
+            '"3.10"',
+            '"3.11"',
+            '"3.12"',
+            "scripts/generate-package-manifest.py --check --source git",
+            "tests.test_bootstrap",
+        ):
+            self.assertIn(required, workflow)
 
     def test_default_hook_path_and_inventory(self) -> None:
         self.assertTrue(HOOK_PATH.is_file())
@@ -174,11 +231,13 @@ class PackageContractTests(unittest.TestCase):
         self.assertIn("CC-BY-4.0", docs)
         for path in (
             ".codex-plugin/**",
+            ".github/workflows/**",
             "hooks/**",
             "scripts/**",
             "bin/**",
             "tests/**",
             "skills/**/SKILL.md",
+            "skills/**/agents/openai.yaml",
             "README.md",
             "docs/**",
         ):

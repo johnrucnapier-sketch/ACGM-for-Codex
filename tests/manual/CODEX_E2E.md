@@ -4,7 +4,7 @@ Run this checklist only in a disposable Git repository. Capture versions and
 results, but never paste secrets into a prompt or ledger fixture.
 
 **RC status:** this checklist defines the remaining acceptance work; it has not
-yet been recorded as passed in a clean new Codex task for `0.1.0-rc.1`.
+yet been recorded as passed in a clean new Codex task for `0.1.0-rc.2`.
 
 ## 1. Package and install
 
@@ -13,17 +13,18 @@ codex --version
 python3 --version
 git --version
 python3 scripts/release_check.py
-python3 scripts/install_local.py
-codex plugin list
+python3 scripts/preflight.py --json
+python3 scripts/bootstrap.py --dry-run --json
+python3 scripts/bootstrap.py --authorize-install --json
+codex plugin marketplace list --json
+codex plugin list --available --json
 ```
 
-Expected: `acgm-codex@personal` is installed and enabled. The personal source is
-`~/plugins/acgm-codex`; Codex may run its cached copy rather than that source.
-Inspect the personal source and confirm it contains exactly the installer
-allowlist, not `.git`, `.acgm`, virtual environments, build output, credentials,
-or unrelated untracked files. Automated installer tests inject a late failure to
-verify restoration of the prior personal source, marketplace, and CLI wrapper;
-Codex cache state is not claimed as transactionally reversible.
+Expected: `acgm-codex@acgm-codex` version `0.1.0-rc.2` is installed and enabled
+from the exact repository and `v0.1.0-rc.2`; bootstrap verifies its cached package
+bytes. It reports Hook trust, heartbeat, and project bootstrap as pending. Test
+legacy personal and command-failure paths only in isolated fixtures; external
+Codex state is never claimed as transactionally reversible.
 
 ## 2. New task and Hook trust
 
@@ -31,7 +32,9 @@ Codex cache state is not claimed as transactionally reversible.
 2. Open `/hooks`.
 3. Confirm the source is the installed `acgm-codex` plugin.
 4. Read each command and matcher; trust only the reviewed current definitions.
-5. Restart the task if Codex requests it.
+5. Start a second completely new verification task after trust, even if Codex
+   does not request a restart; the discovery task's `SessionStart` occurred
+   before the Hook was trusted.
 
 Expected: no use of `--dangerously-bypass-hook-trust` is required for normal use.
 
@@ -40,8 +43,9 @@ Expected: no use of `--dangerously-bypass-hook-trust` is required for normal use
 Ask Codex to list the ACGM skills and run:
 
 ```bash
-acgm-codex version
-acgm-codex doctor . --json
+ACGM="${CODEX_HOME:-$HOME/.codex}/plugins/cache/acgm-codex/acgm-codex/0.1.0-rc.2/bin/acgm-codex"
+"$ACGM" version
+"$ACGM" doctor . --json
 ```
 
 Expected: four skills are discoverable; doctor reports the installed version and
@@ -70,7 +74,8 @@ file and confirm baseline drift. Corrupt a copied adapter config and confirm
 `BROKEN`, then restore it.
 
 Because each activation resets the accepted-heartbeat time, start another new
-task, review `/hooks`, let `SessionStart` run, and then run
+task, confirm `/hooks` still shows the trusted released definition, let
+`SessionStart` run, and then run
 `acgm-codex doctor . --strict`. Before this post-activation heartbeat, strict
 failure is expected and must not be reported as invalid governance content.
 

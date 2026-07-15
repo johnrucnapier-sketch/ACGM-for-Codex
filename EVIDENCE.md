@@ -3,10 +3,11 @@
 This file prevents implementation activity from silently becoming a product
 claim. Promotion requires evidence at the level stated below.
 
-**Current RC status:** the personal install and Codex cache registration passed
-locally on 2026-07-13, but a completely new Codex task has not yet recorded a
-passed `/hooks` review/trust plus real-tool E2E for this RC. Claims that depend on
-actual Hook discovery therefore remain at “Designed / automated fixture.”
+**Current RC status:** RC2's tag-pinned marketplace/preflight/bootstrap lifecycle
+is covered by isolated fake-Codex fixtures. A completely new Codex task has not
+yet recorded a passed `/hooks` review/trust plus real-tool E2E for RC2. Claims
+that depend on actual Hook discovery remain at “Designed / automated fixture.”
+RC1's personal install is historical evidence, not RC2 acceptance.
 
 | Claim | Current maturity | Required next evidence |
 |---|---|---|
@@ -21,13 +22,15 @@ actual Hook discovery therefore remain at “Designed / automated fixture.”
 
 ## Local evidence recorded for this RC
 
-- Codex CLI: `0.144.0-alpha.4`.
-- Python: `3.14.5` and `3.10.17`.
-- Automated suite: 49 tests passed on both Python versions; plugin and all four
-  skill validators passed through `scripts/release_check.py`.
-- Personal install: `acgm-codex@personal` version `0.1.0-rc.1` registered as
-  installed and enabled; the CLI wrapper reported the same version, and the
-  cached Hook definition matched the source checkout.
+- RC2 automated fixtures cover fresh install, dry-run, explicit authorization,
+  idempotence, legacy personal and duplicate conflicts, command failure/partial
+  state, exact tag/manifest verification, exact cache inventory/byte
+  verification, missing marketplace, invalid available plugin state, and
+  Windows fail-closed behavior.
+- Release validation must be rerun on Python 3.10 and the current Python after
+  the final package manifest is regenerated.
+- RC1 historical personal install: `acgm-codex@personal` version `0.1.0-rc.1`
+  was registered and enabled locally. RC2 treats it as a migration conflict.
 - Not yet evidenced: new-task skill discovery, Hook trust, actual `SessionStart`,
   real tool interception, bounded `Stop`, compaction, or real `PLUGIN_DATA`
   privacy inspection.
@@ -46,6 +49,8 @@ actual Hook discovery therefore remain at “Designed / automated fixture.”
   decision.
 - A `PreCompact` heartbeat is not a governance snapshot or preserved context.
 - Installing the plugin is not proof that its Hooks were trusted or ran.
+- A successful Git marketplace add or matching cache is not a trusted Hook,
+  fresh-task heartbeat, or bootstrapped project.
 - Claude Code V3 test results do not validate the Codex adapter.
 - A single incident or arbitrary age threshold cannot create a universal hard
   governance rule.

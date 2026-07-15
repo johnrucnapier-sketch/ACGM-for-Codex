@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Install the current source tree as the personal ACGM Codex plugin.
+"""DEVELOPMENT ONLY: install the checkout as a personal ACGM Codex plugin.
 
 The workspace checkout remains the canonical development source.  This command
 copies a clean snapshot to ``~/plugins/acgm-codex``, updates the personal
 marketplace, installs a stable CLI wrapper, and asks Codex to refresh its cache.
+Public users must use ``scripts/bootstrap.py`` and the tagged Git marketplace;
+this helper is not a legacy migration mechanism.
 """
 
 from __future__ import annotations
@@ -29,14 +31,19 @@ SOURCE_ROOT = Path(__file__).resolve().parent.parent
 # ledgers, virtual environments, build output, credentials, or unrelated
 # untracked work that must never enter the installed plugin.
 PUBLISHED_FILES = (
+    ".agents/plugins/marketplace.json",
     ".codex-plugin/plugin.json",
+    "AGENTS.md",
     "ARCHITECTURE.md",
     "CHANGELOG.md",
+    "CLAUDE.md",
     "CONTRIBUTING.md",
     "EVIDENCE.md",
+    "INSTALL.md",
     "LICENSE-CODE",
     "LICENSE-DOCS",
     "LICENSING.md",
+    "PACKAGE_MANIFEST.json",
     "README.en.md",
     "README.md",
     "RELEASING.md",
@@ -46,7 +53,10 @@ PUBLISHED_FILES = (
     "hooks/hooks.json",
     "pyproject.toml",
     "scripts/acgm_codex.py",
+    "scripts/bootstrap.py",
+    "scripts/generate-package-manifest.py",
     "scripts/install_local.py",
+    "scripts/preflight.py",
     "scripts/release_check.py",
     "skills/activity-report/SKILL.md",
     "skills/activity-report/agents/openai.yaml",
@@ -57,8 +67,10 @@ PUBLISHED_FILES = (
     "skills/truth-first/SKILL.md",
     "skills/truth-first/agents/openai.yaml",
     "tests/manual/CODEX_E2E.md",
+    "tests/test_bootstrap.py",
     "tests/test_install_local.py",
     "tests/test_package_contract.py",
+    "tests/test_release_tools.py",
     "tests/test_runtime.py",
 )
 

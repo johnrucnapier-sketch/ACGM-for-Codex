@@ -120,6 +120,19 @@ def main(argv: list[str] | None = None) -> int:
 
     checks.append(
         run(
+            "package_manifest",
+            [
+                sys.executable,
+                str(ROOT / "scripts" / "generate-package-manifest.py"),
+                "--check",
+                "--source",
+                "auto",
+            ],
+        )
+    )
+
+    checks.append(
+        run(
             "unittest",
             [
                 sys.executable,
