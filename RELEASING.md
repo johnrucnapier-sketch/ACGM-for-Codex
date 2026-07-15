@@ -18,6 +18,10 @@
 7. Add the exact tag-pinned Git marketplace and plugin in a disposable real
    Codex profile, activate a disposable governed project, and start a new Codex
    task so the accepted heartbeat is later than that activation.
+   Record the real `marketplace list --json` and `plugin list --available --json`
+   field shapes. When the CLI omits a ref or an available entry, prove the exact
+   persisted config plus clean tag/HEAD, origin, manifest, release contract, and
+   marketplace snapshot bytes; do not promote a fixture-only interpretation.
 8. Review and trust the exact Hook definitions through `/hooks`.
 9. Complete every item in `tests/manual/CODEX_E2E.md` in a disposable repository.
 10. Search real `PLUGIN_DATA` and confirm that raw prompt, path, command, remote,

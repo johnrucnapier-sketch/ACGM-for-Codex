@@ -176,5 +176,5 @@ written first and sanitized later; they are discarded before persistence.
 The automated fixtures exercise these contracts, but the installed-plugin E2E
 in a completely new task—including `/hooks` review/trust and real Codex tool
 events—has not yet been recorded as passed. Until that checklist is completed,
-this checkout remains `0.1.0-rc.2` and no automatic-Hook claim is promoted to
+this checkout remains `0.1.0-rc.3` and no automatic-Hook claim is promoted to
 verified platform behavior.
