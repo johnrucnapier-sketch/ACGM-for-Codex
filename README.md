@@ -8,7 +8,7 @@ ACGM for Codex 是 ACGM（Agent Coding Governance Methodology）的独立 Codex
 
 [English](README.en.md)
 
-> **当前状态：`0.1.0-rc.1`。** 这是公开预览候选版，不是稳定发行版。自动测试可以证明
+> **当前状态：`0.1.0-rc.2`。** 这是公开预览候选版，不是稳定发行版。自动测试可以证明
 > 包结构和运行时行为；只有完成全新 Codex task 中的 Hook 信任与真实工具调用 E2E 后，
 > 才能声称自动机制已在当前 Codex 版本上运行。
 
@@ -59,46 +59,57 @@ recursive forced delete 的已识别写法。被识别为高风险、但包含 s
 
 ## 从 GitHub 安装公开预览版
 
-当前候选版从独立仓库安装，不会覆盖 Claude Code 版 ACGM：
+当前候选版通过 Codex 官方 Git marketplace 安装，不会覆盖 Claude Code 版 ACGM。
+只提供仓库名或 URL 仅授权下载与只读检查，不等于授权修改用户配置。先克隆准确 tag：
 
 ```bash
-git clone https://github.com/johnrucnapier-sketch/ACGM-for-Codex.git
+git clone --branch v0.1.0-rc.2 --depth 1 \
+  https://github.com/johnrucnapier-sketch/ACGM-for-Codex.git
 cd ACGM-for-Codex
-python3 scripts/install_local.py
-codex plugin list
+python3 scripts/preflight.py --json
+python3 scripts/bootstrap.py --dry-run --json
 ```
 
-如果已经克隆本仓，在仓库根目录运行：
+Agent 展示准确计划并得到明确安装授权后，才可执行：
 
 ```bash
-python3 scripts/install_local.py
-codex plugin list
+python3 scripts/bootstrap.py --authorize-install --json
 ```
 
-安装器会：
+如果希望“一句话交给 Agent”，可以把授权写完整：
 
-1. 只按显式发布 allowlist 把审查过的文件同步到 `~/plugins/acgm-codex`；
-2. 更新 `~/.agents/plugins/marketplace.json` 中的 `personal` marketplace；
-3. 安装 `~/.local/bin/acgm-codex` 命令；
-4. 运行 `codex plugin add acgm-codex@personal --json` 刷新 Codex cache。
+> 只从 `johnrucnapier-sketch/ACGM-for-Codex` 克隆 `v0.1.0-rc.2`，读取
+> `AGENTS.md` 与 `INSTALL.md`，运行 preflight 和 dry-run；如果源码、manifest、现有安装
+> 状态与文档中的两个固定 Codex 命令完全一致，我明确授权执行这两个用户级插件配置命令。
+> 安装验证后停在 Hook trust，不得迁移旧 personal 版或读取 Event Ledger。
 
-CLI 安装在 `~/.local/bin/acgm-codex`。如果你的 `PATH` 不包含 `~/.local/bin`，可以使用
-这个绝对路径；插件内的 skills 会自动回退到已安装插件自己的 `bin/acgm-codex`，安装器
-不会静默修改 shell 启动文件。
+这段完整指令允许 Agent 连续下载、检查、安装和验证；只贴 URL 仍然只代表允许检查。
 
-前三项作为一个本机事务执行：后续步骤失败时恢复原 personal source、marketplace 和 CLI
-wrapper。Codex cache 是外部状态；如果刷新已经启动后失败，安装器会要求重跑，而不会谎称
-已经回滚 Codex 内部 cache。
+Bootstrap 只调用固定的官方命令：`codex plugin marketplace add
+johnrucnapier-sketch/ACGM-for-Codex --ref v0.1.0-rc.2 --json` 与 `codex plugin
+add acgm-codex@acgm-codex --json`。之后独立核对 marketplace source/ref、插件
+name/version/enabled 和 cache package bytes；外部命令中途失败会报告 partial state，不会
+声称已回滚。
 
 随后必须：
 
-1. 新开一个 Codex task；
-2. 在 Codex 中打开 `/hooks`；
-3. 审查并信任 ACGM 当前 Hook 定义；
-4. 在目标项目调用 `$governance-bootstrap`。
+1. 新开一个 discovery task，让新插件被加载；
+2. 在 Codex 中打开 `/hooks`，审查并信任 ACGM 当前 Hook 定义；
+3. 再新开一个 verification task，让已信任的 `SessionStart` 从任务开始运行；
+4. 验证 heartbeat 后，在目标项目调用 `$governance-bootstrap`。
 
 旧 task 不保证重新加载刚安装的 skills 和 Hooks。Hook 内容变化后，Codex 会按新 hash 要求
 重新审查，这不是安装失败。
+
+旧 `acgm-codex@personal`、重复插件、其他 scope/source/ref 或版本冲突全部失败关闭；
+bootstrap 不会自动卸载、覆盖、吸收或搬运私有 `PLUGIN_DATA` / Event Ledger。安装、Hook
+信任、新 task heartbeat 和项目 bootstrap 是四个不同状态，详见 [INSTALL.md](INSTALL.md)。
+
+公共安装不会给 shell `PATH` 增加 wrapper；skill 会从已安装插件根目录解析 launcher。
+`scripts/install_local.py` 仅供维护者在隔离 HOME 中测试旧 personal 开发路径。
+
+RC2 仅支持 macOS/Linux 与 Python 3.10+。Windows 明确 BLOCKED：当前 runtime 仍依赖
+POSIX `fcntl` 锁；Windows Codex app 支持插件不等于本 runtime 已可移植或通过 E2E。
 
 ## 在项目中启用
 

@@ -9,7 +9,7 @@ source-minimized local Event Ledger.
 
 [中文](README.md)
 
-> **Status: `0.1.0-rc.1`.** This is a public-preview release candidate, not a stable
+> **Status: `0.1.0-rc.2`.** This is a public-preview release candidate, not a stable
 > release. Automated tests can validate the package and runtime. Automatic Hook
 > behavior is not considered verified until the clean-task E2E checklist passes
 > on the installed Codex version.
@@ -68,39 +68,58 @@ indirect writes, and other tool paths remain outside complete coverage.
 
 ## Install the public preview from GitHub
 
-The release candidate is installed from its independent repository and does not
-overwrite ACGM for Claude Code:
+The release candidate uses the official Codex Git marketplace and does not
+overwrite ACGM for Claude Code. A repository URL by itself is not permission to
+modify user configuration. Clone the exact tag and run the read-only checks:
 
 ```bash
-git clone https://github.com/johnrucnapier-sketch/ACGM-for-Codex.git
+git clone --branch v0.1.0-rc.2 --depth 1 \
+  https://github.com/johnrucnapier-sketch/ACGM-for-Codex.git
 cd ACGM-for-Codex
-python3 scripts/install_local.py
-codex plugin list
+python3 scripts/preflight.py --json
+python3 scripts/bootstrap.py --dry-run --json
 ```
 
-If the repository is already cloned, run from its root:
+After reviewing the plan and explicitly authorizing the exact user-config
+mutation, run:
 
 ```bash
-python3 scripts/install_local.py
-codex plugin list
+python3 scripts/bootstrap.py --authorize-install --json
 ```
 
-The installer copies only an explicit reviewed-file allowlist, updates the
-personal marketplace, installs the CLI wrapper, and asks Codex to refresh its
-cache. The first three managed paths form a local transaction: a later failure
-restores the prior personal source, marketplace, and wrapper. Codex's cache is
-external state; if refresh has already started and then fails, rerun the
-installer rather than treating that cache as rolled back.
+For a one-instruction Agent handoff, explicitly name this repository and tag,
+require it to read `AGENTS.md` and `INSTALL.md`, authorize only the two fixed
+Codex plugin commands below if every preflight check matches, and require it to
+stop at Hook trust without migrating a personal install or reading Event Ledger
+data. That instruction can cover clone, preflight, install, and verification in
+one task; a bare URL cannot.
 
-Then start a new Codex task, open `/hooks`, review and trust the current ACGM
-Hook definitions, and invoke `$governance-bootstrap` in the target project.
-Existing tasks are not guaranteed to reload newly installed components. A Hook
-definition change can require a new trust review because Codex records trust by
-definition hash.
+Bootstrap invokes `codex plugin marketplace add
+johnrucnapier-sketch/ACGM-for-Codex --ref v0.1.0-rc.2 --json` and then `codex
+plugin add acgm-codex@acgm-codex --json`. It independently verifies the exact
+marketplace source/ref, plugin name/version/enabled state, and cached package
+bytes. A failed external mutation is reported as partial state; it is not
+described as rolled back.
 
-The CLI wrapper is installed at `~/.local/bin/acgm-codex`. If that directory is
-not on `PATH`, use the absolute path; plugin skills fall back to the installed
-plugin's own launcher. The installer does not silently edit shell startup files.
+Then start a new discovery task, open `/hooks`, and review and trust the current
+ACGM Hook definitions. Start a second new verification task so the trusted
+`SessionStart` runs from task start; verify that heartbeat before invoking
+`$governance-bootstrap` in the target project. Existing tasks are not guaranteed
+to reload newly installed components. A Hook definition change can require a
+new trust review because Codex records trust by definition hash. Installation,
+Hook trust, a fresh-task heartbeat, and project bootstrap are separate stages.
+
+Legacy `acgm-codex@personal`, duplicates, another scope/source/ref, and version
+conflicts are fail-closed. Bootstrap never uninstalls, overwrites, adopts, or
+moves private `PLUGIN_DATA` / Event Ledger content. See [INSTALL.md](INSTALL.md).
+
+Public installation does not add a shell wrapper to `PATH`; installed skills
+resolve the launcher inside the plugin root. `scripts/install_local.py` is only
+for maintainers exercising the old personal path with a disposable HOME.
+
+RC2 supports macOS and Linux with Python 3.10+. Windows is explicitly blocked:
+the runtime still relies on POSIX `fcntl` locking, so Codex app plugin support
+on Windows is not evidence that this runtime is portable or E2E-tested there.
 
 ## Bootstrap a project
 

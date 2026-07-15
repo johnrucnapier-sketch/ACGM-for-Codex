@@ -1,0 +1,21 @@
+{
+  "name": "acgm-codex",
+  "interface": {
+    "displayName": "ACGM for Codex"
+  },
+  "plugins": [
+    {
+      "name": "acgm-codex",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/johnrucnapier-sketch/ACGM-for-Codex.git",
+        "ref": "v0.1.0-rc.2"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

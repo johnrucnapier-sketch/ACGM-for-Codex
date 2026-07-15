@@ -6,12 +6,13 @@ Hook, tool, trust, and data contracts.
 
 ## Runtime flow
 
-1. A personal marketplace exposes `acgm-codex` to Codex.
-2. Codex copies the selected local source into its plugin cache.
-3. A new task discovers four skills and `hooks/hooks.json`.
+1. The public tag-pinned Git marketplace exposes `acgm-codex` to Codex.
+2. Codex copies the selected immutable remote source into its plugin cache.
+3. A new discovery task discovers four skills and `hooks/hooks.json`.
 4. The user reviews the Hook definitions through `/hooks`; untrusted definitions
    are skipped by Codex.
-5. `SessionStart` resolves the actual Git/worktree root, evaluates project state,
+5. A second new verification task starts after trust. Its `SessionStart` resolves
+   the actual Git/worktree root, evaluates project state,
    records a heartbeat, and injects a short grounding context.
 6. Tool Hooks inspect only the fields required for a narrow rule, write enumerated
    results to `PLUGIN_DATA`, and discard the raw input.
@@ -19,14 +20,12 @@ Hook, tool, trust, and data contracts.
    heartbeat was observed for the current version and activation without a later
    runtime error.
 
-The workspace checkout, `~/plugins/acgm-codex`, and Codex's cache are deliberately
-different layers. `scripts/install_local.py` makes the workspace checkout the
-canonical source and copies only an explicit reviewed-file allowlist. It treats
-the personal source, personal marketplace file, and CLI wrapper as one local
-transaction and restores their prior state if a later install step fails. Codex's
-cache is external to that transaction: if cache refresh has already begun and
-then fails, the installer reports that a rerun is required rather than claiming
-the cache was rolled back.
+The workspace checkout and Codex's cache are deliberately different layers.
+Public bootstrap verifies a clean exact release tag and `PACKAGE_MANIFEST.json`,
+then uses the official Git marketplace CLI. It independently verifies the
+resulting marketplace source/ref, plugin identity/version/enabled state, and
+cached package bytes. The old personal copy remains development-only; none of
+these checks proves that Hooks were trusted or ran.
 
 ## Governance layers
 
@@ -177,5 +176,5 @@ written first and sanitized later; they are discarded before persistence.
 The automated fixtures exercise these contracts, but the installed-plugin E2E
 in a completely new task—including `/hooks` review/trust and real Codex tool
 events—has not yet been recorded as passed. Until that checklist is completed,
-this checkout remains `0.1.0-rc.1` and no automatic-Hook claim is promoted to
+this checkout remains `0.1.0-rc.2` and no automatic-Hook claim is promoted to
 verified platform behavior.
