@@ -29,8 +29,8 @@ PLUGIN_NAME = "acgm-codex"
 MARKETPLACE_NAME = "acgm-codex"
 PLUGIN_ID = f"{PLUGIN_NAME}@{MARKETPLACE_NAME}"
 LEGACY_PLUGIN_ID = f"{PLUGIN_NAME}@personal"
-VERSION = "0.1.0-rc.3"
-TAG = "v0.1.0-rc.3"
+VERSION = "0.1.0-rc.4"
+TAG = "v0.1.0-rc.4"
 REPOSITORY = "johnrucnapier-sketch/ACGM-for-Codex"
 REPOSITORY_URL = "https://github.com/johnrucnapier-sketch/ACGM-for-Codex.git"
 SOURCE_ROOT = Path(__file__).resolve().parents[1]
@@ -807,9 +807,12 @@ def inspect_codex_state(
     available_item = exact_available[0] if len(exact_available) == 1 else None
     if installed_item is not None and (
         installed_item.get("name") != PLUGIN_NAME
+        or installed_item.get("marketplaceName") != MARKETPLACE_NAME
         or installed_item.get("version") != VERSION
         or installed_item.get("installed") is not True
         or installed_item.get("enabled") is not True
+        or installed_item.get("installPolicy") != "AVAILABLE"
+        or installed_item.get("authPolicy") != "ON_INSTALL"
         or installed_item.get("scope") not in {None, "user"}
         or not _plugin_source_exact(installed_item)
     ):
@@ -819,9 +822,19 @@ def inspect_codex_state(
     available_item_exact = bool(
         available_item is not None
         and available_item.get("name") == PLUGIN_NAME
-        and available_item.get("version") == VERSION
+        and available_item.get("marketplaceName") == MARKETPLACE_NAME
+        and (
+            available_item.get("version") == VERSION
+            or (
+                "version" in available_item
+                and available_item["version"] is None
+                and runtime_verified
+            )
+        )
         and available_item.get("installed") is False
         and available_item.get("enabled") is False
+        and available_item.get("installPolicy") == "AVAILABLE"
+        and available_item.get("authPolicy") == "ON_INSTALL"
         and _plugin_source_exact(available_item)
     )
     if available_item is not None and not available_item_exact:

@@ -3,12 +3,12 @@
 This file prevents implementation activity from silently becoming a product
 claim. Promotion requires evidence at the level stated below.
 
-**Current RC status:** RC3's tag-pinned marketplace/preflight/bootstrap lifecycle
+**Current RC status:** RC4's tag-pinned marketplace/preflight/bootstrap lifecycle
 is covered by isolated fixtures that include the JSON shapes observed from a real
 Codex CLI. A completely new Codex task has not yet recorded a passed `/hooks`
-review/trust plus real-tool E2E for RC3. Claims that depend on actual Hook
+review/trust plus real-tool E2E for RC4. Claims that depend on actual Hook
 discovery remain at “Designed / automated fixture.” RC1's personal install is
-historical evidence, not RC3 acceptance.
+historical evidence, not RC4 acceptance.
 
 | Claim | Current maturity | Required next evidence |
 |---|---|---|
@@ -38,18 +38,31 @@ an RC2 release-tool schema mismatch and false conflict, not a Hook failure or
 damaged installation. Hook trust, heartbeat, and project bootstrap were not
 reached, and RC2 was not promoted to a GitHub Release.
 
+## RC3 public-bootstrap finding
+
+On 2026-07-15, a second fresh isolated profile cloned public tag
+`v0.1.0-rc.3` at commit `244a0e4`. Source preflight and dry-run passed, and the
+marketplace-add command returned zero. The new persisted-config plus exact-tag
+snapshot evidence chain also passed completely. In this run, however, the real
+CLI enumerated the uninstalled plugin with the exact ID, repository, ref, and
+policy but `version: null`. RC3 conservatively treated that explicit null placeholder as a
+conflict and stopped at `MARKETPLACE_ADDED_BUT_POSTCONDITION_UNVERIFIED` before
+plugin add. This was another pre-install CLI-schema compatibility finding, not a
+Hook or package-integrity failure. RC4 accepts a null available version only when
+the complete independent runtime evidence chain proves the exact candidate.
+
 ## Local evidence recorded for the current RC
 
-- RC3 automated fixtures cover fresh install, dry-run, explicit authorization,
+- RC4 automated fixtures cover fresh install, dry-run, explicit authorization,
   idempotence, legacy personal and duplicate conflicts, command failure/partial
   state, exact tag/manifest verification, exact cache inventory/byte
   verification, missing marketplace, invalid available plugin state, the
-  observed omitted-ref/empty-available/Git-source CLI shape, tampered persisted
-  ref/snapshot evidence, and Windows fail-closed behavior.
-- Release validation must be rerun on Python 3.10 and the current Python after
-  the final package manifest is regenerated.
+  observed omitted-ref/empty-available/explicit-null-version/Git-source CLI shapes,
+  tampered persisted ref/snapshot evidence, and Windows fail-closed behavior.
+- Release validation passed on Python 3.10 and the current Python after the
+  final package manifest was regenerated (77 tests on each interpreter).
 - RC1 historical personal install: `acgm-codex@personal` version `0.1.0-rc.1`
-  was registered and enabled locally. RC3 treats it as a migration conflict.
+  was registered and enabled locally. RC4 treats it as a migration conflict.
 - Not yet evidenced: new-task skill discovery, Hook trust, actual `SessionStart`,
   real tool interception, bounded `Stop`, compaction, or real `PLUGIN_DATA`
   privacy inspection.

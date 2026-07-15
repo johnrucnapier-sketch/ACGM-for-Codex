@@ -97,6 +97,7 @@ class FakeCodex:
         marketplace_failure: bool = False,
         plugin_failure: bool = False,
         available_wrong_version: bool = False,
+        available_null_version: bool = False,
         available_wrong_source: bool = False,
         available_missing: bool = False,
         duplicate_available: bool = False,
@@ -111,6 +112,7 @@ class FakeCodex:
         self.cache_tamper = cache_tamper
         self.cache_extra = cache_extra
         self.available_wrong_version = available_wrong_version
+        self.available_null_version = available_null_version
         self.available_wrong_source = available_wrong_source
         self.available_missing = available_missing
         self.duplicate_available = duplicate_available
@@ -118,6 +120,7 @@ class FakeCodex:
             marketplace_conflict
             or wrong_version
             or available_wrong_version
+            or available_null_version
             or available_wrong_source
             or available_missing
             or duplicate_available
@@ -194,6 +197,8 @@ class FakeCodex:
                         "version": preflight.VERSION,
                         "installed": True,
                         "enabled": True,
+                        "installPolicy": "AVAILABLE",
+                        "authPolicy": "ON_INSTALL",
                         "source": source,
                     }
                 )
@@ -202,9 +207,12 @@ class FakeCodex:
                     {
                         "pluginId": preflight.PLUGIN_ID,
                         "name": preflight.PLUGIN_NAME,
+                        "marketplaceName": preflight.MARKETPLACE_NAME,
                         "version": "9.9.9" if self.wrong_version else preflight.VERSION,
                         "installed": True,
                         "enabled": True,
+                        "installPolicy": "AVAILABLE",
+                        "authPolicy": "ON_INSTALL",
                         "source": source,
                     }
                 )
@@ -213,9 +221,18 @@ class FakeCodex:
                     {
                         "pluginId": preflight.PLUGIN_ID,
                         "name": preflight.PLUGIN_NAME,
-                        "version": "9.9.9" if self.available_wrong_version else preflight.VERSION,
+                        "marketplaceName": preflight.MARKETPLACE_NAME,
+                        "version": (
+                            None
+                            if self.available_null_version
+                            else "9.9.9"
+                            if self.available_wrong_version
+                            else preflight.VERSION
+                        ),
                         "installed": False,
                         "enabled": False,
+                        "installPolicy": "AVAILABLE",
+                        "authPolicy": "ON_INSTALL",
                         "source": (
                             {
                                 "source": "url",
@@ -279,6 +296,9 @@ class ObservedCodex0144:
         self.marketplace = False
         self.installed = False
         self.installed_name = preflight.PLUGIN_NAME
+        self.enumerate_available = False
+        self.enumerated_available_version: object = None
+        self.omit_available_version = False
         self.plugin_payload_override: dict[str, object] | None = None
         self.mutations: list[list[str]] = []
 
@@ -359,6 +379,7 @@ class ObservedCodex0144:
                     0, json.dumps(self.plugin_payload_override)
                 )
             installed = []
+            available = []
             if self.installed:
                 installed.append(
                     {
@@ -368,6 +389,8 @@ class ObservedCodex0144:
                         "version": preflight.VERSION,
                         "installed": True,
                         "enabled": True,
+                        "installPolicy": "AVAILABLE",
+                        "authPolicy": "ON_INSTALL",
                         "source": {
                             "source": "git",
                             "url": preflight.REPOSITORY_URL,
@@ -375,8 +398,26 @@ class ObservedCodex0144:
                         },
                     }
                 )
+            elif self.marketplace and self.enumerate_available:
+                available_item: dict[str, object] = {
+                    "pluginId": preflight.PLUGIN_ID,
+                    "name": preflight.PLUGIN_NAME,
+                    "marketplaceName": preflight.MARKETPLACE_NAME,
+                    "installed": False,
+                    "enabled": False,
+                    "installPolicy": "AVAILABLE",
+                    "authPolicy": "ON_INSTALL",
+                    "source": {
+                        "source": "git",
+                        "url": preflight.REPOSITORY_URL,
+                        "ref": preflight.TAG,
+                    },
+                }
+                if not self.omit_available_version:
+                    available_item["version"] = self.enumerated_available_version
+                available.append(available_item)
             return preflight.CommandResult(
-                0, json.dumps({"installed": installed, "available": []})
+                0, json.dumps({"installed": installed, "available": available})
             )
         if args == bootstrap.MARKETPLACE_ADD:
             self.mutations.append(args)
@@ -482,6 +523,51 @@ class BootstrapTests(unittest.TestCase):
                 intermediate["codex"]["marketplace_runtime_evidence"]["verified"]
             )
             self.assertEqual(result["lifecycle"]["package_bytes"], "VERIFIED")
+
+    def test_observed_cli_null_available_version_uses_strong_runtime_evidence(self) -> None:
+        temp, source, env = self.fixture()
+        with temp:
+            fake = ObservedCodex0144(source, env)
+            fake.enumerate_available = True
+            result = bootstrap.execute(
+                source, dry_run=False, authorized=True, env=env, runner=fake
+            )
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["status"], "INSTALLED_ENABLED_PENDING_HOOK_TRUST")
+            intermediate = result["after_marketplace_add"]
+            self.assertEqual(intermediate["status"], "READY_FOR_PLUGIN_ADD")
+            self.assertEqual(intermediate["codex"]["plugin"], "AVAILABLE_EXACT")
+            self.assertTrue(
+                intermediate["codex"]["marketplace_runtime_evidence"]["verified"]
+            )
+
+    def test_explicit_wrong_available_version_overrides_runtime_evidence(self) -> None:
+        temp, source, env = self.fixture()
+        with temp:
+            fake = ObservedCodex0144(source, env)
+            fake.enumerate_available = True
+            fake.enumerated_available_version = "9.9.9"
+            fake.add_marketplace()
+            result = preflight.evaluate(source, env=env, runner=fake)
+            self.assertEqual(result["status"], "BLOCKED")
+            self.assertIn(
+                "available_plugin_identity_version_or_source_conflict",
+                result["error_codes"],
+            )
+
+    def test_missing_available_version_is_not_treated_as_explicit_null(self) -> None:
+        temp, source, env = self.fixture()
+        with temp:
+            fake = ObservedCodex0144(source, env)
+            fake.enumerate_available = True
+            fake.omit_available_version = True
+            fake.add_marketplace()
+            result = preflight.evaluate(source, env=env, runner=fake)
+            self.assertEqual(result["status"], "BLOCKED")
+            self.assertIn(
+                "available_plugin_identity_version_or_source_conflict",
+                result["error_codes"],
+            )
 
     def test_observed_cli_0144_missing_or_tampered_ref_evidence_fails_closed(self) -> None:
         cases = (
@@ -741,6 +827,7 @@ class BootstrapTests(unittest.TestCase):
     def test_invalid_or_missing_available_plugin_blocks_add(self) -> None:
         for kwargs in (
             {"available_wrong_version": True},
+            {"available_null_version": True},
             {"available_wrong_source": True},
             {"available_missing": True},
             {"duplicate_available": True},

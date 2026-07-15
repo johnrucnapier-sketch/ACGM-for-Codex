@@ -1,7 +1,7 @@
-# ACGM for Codex RC3 installation / 安装说明
+# ACGM for Codex RC4 installation / 安装说明
 
-Public version: **`0.1.0-rc.3`**, immutable source tag:
-**`v0.1.0-rc.3`**.
+Public version: **`0.1.0-rc.4`**, immutable source tag:
+**`v0.1.0-rc.4`**.
 
 ACGM for Codex uses the official Codex Git marketplace flow. The public
 installer never edits `config.toml` or marketplace JSON directly and never
@@ -16,7 +16,7 @@ inspection. It is not authorization to change user-level Codex configuration.
 After the user explicitly asks to install:
 
 ```bash
-git clone --branch v0.1.0-rc.3 --depth 1 \
+git clone --branch v0.1.0-rc.4 --depth 1 \
   https://github.com/johnrucnapier-sketch/ACGM-for-Codex.git
 cd ACGM-for-Codex
 python3 scripts/preflight.py --json
@@ -40,7 +40,7 @@ Bootstrap uses only these Codex mutations:
 
 ```bash
 codex plugin marketplace add johnrucnapier-sketch/ACGM-for-Codex \
-  --ref v0.1.0-rc.3 --json
+  --ref v0.1.0-rc.4 --json
 codex plugin add acgm-codex@acgm-codex --json
 ```
 
@@ -109,7 +109,7 @@ setup); report such behavior instead of claiming zero filesystem side effects.
 
 - Supported RC candidates: macOS and Linux, Python 3.10+, Git, and a Codex CLI
   exposing the plugin marketplace commands used above.
-- **Windows is blocked in RC3.** The current runtime and wrapper rely on POSIX
+- **Windows is blocked in RC4.** The current runtime and wrapper rely on POSIX
   shell behavior and `fcntl` locking. The Windows Codex app may support plugins,
   but that does not make this ACGM runtime portable or tested on Windows.
 

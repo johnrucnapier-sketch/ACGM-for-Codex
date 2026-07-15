@@ -97,7 +97,7 @@ class PackageContractTests(unittest.TestCase):
             {
                 "source": "url",
                 "url": "https://github.com/johnrucnapier-sketch/ACGM-for-Codex.git",
-                "ref": "v0.1.0-rc.3",
+                "ref": "v0.1.0-rc.4",
             },
         )
         self.assertEqual(

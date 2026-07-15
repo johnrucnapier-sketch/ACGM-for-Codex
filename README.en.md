@@ -9,7 +9,7 @@ source-minimized local Event Ledger.
 
 [中文](README.md)
 
-> **Status: `0.1.0-rc.3`.** This is a public-preview release candidate, not a stable
+> **Status: `0.1.0-rc.4`.** This is a public-preview release candidate, not a stable
 > release. Automated tests can validate the package and runtime. Automatic Hook
 > behavior is not considered verified until the clean-task E2E checklist passes
 > on the installed Codex version.
@@ -73,7 +73,7 @@ overwrite ACGM for Claude Code. A repository URL by itself is not permission to
 modify user configuration. Clone the exact tag and run the read-only checks:
 
 ```bash
-git clone --branch v0.1.0-rc.3 --depth 1 \
+git clone --branch v0.1.0-rc.4 --depth 1 \
   https://github.com/johnrucnapier-sketch/ACGM-for-Codex.git
 cd ACGM-for-Codex
 python3 scripts/preflight.py --json
@@ -95,7 +95,7 @@ data. That instruction can cover clone, preflight, install, and verification in
 one task; a bare URL cannot.
 
 Bootstrap invokes `codex plugin marketplace add
-johnrucnapier-sketch/ACGM-for-Codex --ref v0.1.0-rc.3 --json` and then `codex
+johnrucnapier-sketch/ACGM-for-Codex --ref v0.1.0-rc.4 --json` and then `codex
 plugin add acgm-codex@acgm-codex --json`. It independently verifies the exact
 marketplace source/ref, plugin name/version/enabled state, and cached package
 bytes. A failed external mutation is reported as partial state; it is not
@@ -117,7 +117,7 @@ Public installation does not add a shell wrapper to `PATH`; installed skills
 resolve the launcher inside the plugin root. `scripts/install_local.py` is only
 for maintainers exercising the old personal path with a disposable HOME.
 
-RC3 supports macOS and Linux with Python 3.10+. Windows is explicitly blocked:
+RC4 supports macOS and Linux with Python 3.10+. Windows is explicitly blocked:
 the runtime still relies on POSIX `fcntl` locking, so Codex app plugin support
 on Windows is not evidence that this runtime is portable or E2E-tested there.
 
