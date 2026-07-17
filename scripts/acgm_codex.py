@@ -405,10 +405,11 @@ def _project_status(root: Path) -> dict[str, Any]:
     return result
 
 
-def _data_dir() -> Path:
+def _data_dir(*, prepare: bool = True) -> Path:
     # The explicit override is useful for tests. Installed hooks receive the
     # authoritative PLUGIN_DATA path, which is recorded locally so the standalone
-    # CLI can inspect the same ledger outside a hook process.
+    # CLI can inspect the same ledger outside a hook process. Read-only consumers
+    # disable preparation so inspection never repairs permissions or creates state.
     override = os.environ.get("ACGM_CODEX_DATA_DIR")
     if override:
         return Path(override).expanduser().resolve()
@@ -416,25 +417,26 @@ def _data_dir() -> Path:
     locator = Path.home() / ".codex" / "acgm-codex" / "data-location.json"
     if plugin_data:
         path = Path(plugin_data).expanduser().resolve()
-        try:
-            locator.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-            os.chmod(locator.parent, 0o700)
-            expected = {"schema": DATA_LOCATION_SCHEMA, "path": str(path)}
-            current: dict[str, Any] = {}
-            locator_is_symlink = locator.is_symlink()
-            if locator.exists() and not locator_is_symlink:
-                try:
-                    current = _safe_read_json(locator)
-                except RuntimeProblem:
-                    current = {}
-            if current != expected or locator_is_symlink:
-                _atomic_json(locator, expected, mode=0o600)
-            else:
-                os.chmod(locator, 0o600)
-        except OSError:
-            # The Hook can still use its official data path. A later standalone
-            # doctor will remain unhealthy until the locator can be written.
-            pass
+        if prepare:
+            try:
+                locator.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+                os.chmod(locator.parent, 0o700)
+                expected = {"schema": DATA_LOCATION_SCHEMA, "path": str(path)}
+                current: dict[str, Any] = {}
+                locator_is_symlink = locator.is_symlink()
+                if locator.exists() and not locator_is_symlink:
+                    try:
+                        current = _safe_read_json(locator)
+                    except RuntimeProblem:
+                        current = {}
+                if current != expected or locator_is_symlink:
+                    _atomic_json(locator, expected, mode=0o600)
+                else:
+                    os.chmod(locator, 0o600)
+            except OSError:
+                # The Hook can still use its official data path. A later standalone
+                # doctor will remain unhealthy until the locator can be written.
+                pass
         return path
     if locator.exists() or locator.is_symlink():
         if locator.is_symlink():
@@ -443,8 +445,9 @@ def _data_dir() -> Path:
         raw = value.get("path")
         if value.get("schema") != DATA_LOCATION_SCHEMA or not isinstance(raw, str):
             raise RuntimeProblem("the plugin data locator is invalid")
-        os.chmod(locator.parent, 0o700)
-        os.chmod(locator, 0o600)
+        if prepare:
+            os.chmod(locator.parent, 0o700)
+            os.chmod(locator, 0o600)
         return Path(raw).expanduser().resolve()
     return Path.home() / ".codex" / "plugins" / "data" / "acgm-codex"
 
@@ -456,6 +459,16 @@ def _ensure_data_dir() -> Path:
     path.mkdir(parents=True, exist_ok=True, mode=0o700)
     os.chmod(path, 0o700)
     return path
+
+
+def _read_key_file(path: Path) -> bytes:
+    try:
+        key = path.read_bytes()
+    except OSError as exc:
+        raise RuntimeProblem("the activity ledger key is unreadable") from exc
+    if len(key) < 32:
+        raise RuntimeProblem("the activity ledger key is invalid")
+    return key
 
 
 def _secret_key() -> bytes:
@@ -479,13 +492,7 @@ def _secret_key() -> bytes:
                 handle.flush()
                 os.fsync(handle.fileno())
         os.chmod(path, 0o600)
-        try:
-            key = path.read_bytes()
-        except OSError as exc:
-            raise RuntimeProblem("the activity ledger key is unreadable") from exc
-        if len(key) < 32:
-            raise RuntimeProblem("the activity ledger key is invalid")
-        return key
+        return _read_key_file(path)
     finally:
         fcntl.flock(lock_descriptor, fcntl.LOCK_UN)
         os.close(lock_descriptor)
@@ -498,8 +505,35 @@ def _opaque(label: str, raw: Any) -> str:
     return hmac.new(_secret_key(), message, hashlib.sha256).hexdigest()[:24]
 
 
+def _read_secret_key() -> bytes:
+    directory = _data_dir(prepare=False)
+    path = directory / "hmac.key"
+    ledger = directory / "events.jsonl"
+    if not path.exists():
+        if ledger.exists() and ledger.stat().st_size > 0:
+            raise RuntimeProblem(
+                "the activity ledger key is missing; preserve the ledger and key "
+                "together or move both aside before starting a new audit epoch"
+            )
+        raise RuntimeProblem("the activity ledger key is missing")
+    return _read_key_file(path)
+
+
+def _opaque_readonly(label: str, raw: Any) -> str:
+    message = f"{label}\0{raw if raw not in (None, '') else 'none'}".encode(
+        "utf-8", "surrogatepass"
+    )
+    return hmac.new(_read_secret_key(), message, hashlib.sha256).hexdigest()[:24]
+
+
 def _ledger_path() -> Path:
     return _ensure_data_dir() / "events.jsonl"
+
+
+def _read_ledger_path() -> Path:
+    if not _supported_platform() or fcntl is None:
+        raise RuntimeProblem("the activity ledger is supported only on macOS and Linux")
+    return _data_dir(prepare=False) / "events.jsonl"
 
 
 def _event_value(
@@ -600,7 +634,7 @@ def _append_event(
 
 
 def _read_events() -> list[dict[str, Any]]:
-    path = _ledger_path()
+    path = _read_ledger_path()
     if not path.exists():
         return []
     descriptor = os.open(path, os.O_RDONLY)
@@ -1528,18 +1562,22 @@ def _doctor_payload(root: Path) -> dict[str, Any]:
     except (RuntimeProblem, TypeError, ValueError):
         activated_at = 0
     try:
-        project_id = _opaque("project", str(root.resolve()))
+        events = _read_events()
+        project_id = (
+            _opaque_readonly("project", str(root.resolve())) if events else None
+        )
         relevant_events = [
             event
-            for event in _read_events()
-            if event.get("project_id") == project_id
+            for event in events
+            if project_id is not None
+            and event.get("project_id") == project_id
             and event.get("version") == VERSION
             and activation_id is not None
             and event.get("activation_id") == activation_id
             and int(event.get("ts", 0)) >= activated_at
         ]
         ledger_available = True
-        ledger = _ledger_path()
+        ledger = _read_ledger_path()
         if ledger.exists():
             ledger_secure = stat.S_IMODE(ledger.stat().st_mode) == 0o600
         else:
@@ -1622,8 +1660,11 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
 
 
 def _project_events(root: Path) -> list[dict[str, Any]]:
-    project_id = _opaque("project", str(root.resolve()))
-    return [event for event in _read_events() if event.get("project_id") == project_id]
+    events = _read_events()
+    if not events:
+        return []
+    project_id = _opaque_readonly("project", str(root.resolve()))
+    return [event for event in events if event.get("project_id") == project_id]
 
 
 def _cmd_report(args: argparse.Namespace) -> int:

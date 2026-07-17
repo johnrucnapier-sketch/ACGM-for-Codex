@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Make standalone `doctor` and `report` genuinely read-only when consuming an
+  existing Hook ledger: they no longer create directories, repair modes, or open
+  write-capable lock files merely to resolve the locator, HMAC key, and events.
+  This preserves strict health checks inside managed Codex sandboxes where
+  plugin data is readable but intentionally not writable.
+
 ## 0.1.0-rc.4 — 2026-07-15 tagged test candidate; pending public validation
 
 - Accept a pre-install available entry whose version is `null` only when the

@@ -139,6 +139,14 @@ The mode-`0600` locator necessarily contains the absolute official data-director
 path. It is local routing metadata, not a ledger event, and must not be confused
 with the claim that Event Ledger records omit source and project paths.
 
+Installed Hooks own ledger initialization, locator recording, and permission
+hardening. Standalone `doctor` and `report` resolve an existing locator and read
+the key and ledger without creating directories, calling `chmod`, or opening a
+write-capable lock file. This separation is required for managed Codex sandboxes
+that permit inspection of plugin data but intentionally deny metadata writes.
+Read-only diagnostics report missing or insecure state; they do not silently
+repair it.
+
 Persistent records contain schema/version, opaque local identifiers, timestamps,
 enumerated rule/action/status/outcome fields, and optional relationships between
 events. A local secret salt creates project/session/turn/target identifiers. Raw paths,

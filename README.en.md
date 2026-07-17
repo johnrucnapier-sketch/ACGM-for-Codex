@@ -186,6 +186,10 @@ ledger. The locator itself contains that data-directory path; it is not an Event
 Ledger event. If the ledger remains but its local HMAC key is missing, the
 runtime refuses to create a silent replacement. Preserve or restore ledger and
 key together, or move both aside explicitly to begin a new audit epoch.
+Hooks own ledger initialization and permission hardening. Standalone `doctor`
+and `report` only read an existing locator, key, and ledger; they do not create
+directories, call `chmod`, or open a write-capable lock merely to inspect state,
+so they remain usable in managed Codex sandboxes with read-only plugin data.
 
 ## Validate
 

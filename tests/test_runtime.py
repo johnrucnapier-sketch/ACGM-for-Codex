@@ -626,11 +626,101 @@ class RuntimeTests(unittest.TestCase):
 
         standalone_env = hook_env.copy()
         standalone_env.pop("PLUGIN_DATA")
-        locator.chmod(0o644)
         report = self.report_json(env=standalone_env)
         self.assertEqual(report["count"], 1)
         self.assertEqual(report["events"][0]["kind"], "hook-heartbeat")
         self.assertEqual(stat.S_IMODE(locator.stat().st_mode), 0o600)
+
+    def test_standalone_doctor_and_report_do_not_write_plugin_data(self) -> None:
+        self.init_activate()
+        home = self.base / "isolated-home"
+        plugin_data = self.base / "official-plugin-data"
+        hook_env = os.environ.copy()
+        hook_env.pop("ACGM_CODEX_DATA_DIR", None)
+        hook_env["PLUGIN_DATA"] = str(plugin_data)
+        hook_env["HOME"] = str(home)
+        hook_env["PYTHONDONTWRITEBYTECODE"] = "1"
+        self.hook(
+            "session-start",
+            self.payload("SessionStart", source="startup"),
+            env=hook_env,
+        )
+
+        standalone_env = hook_env.copy()
+        standalone_env.pop("PLUGIN_DATA")
+        guarded_runner = """
+import os
+import runpy
+import sys
+
+runtime = sys.argv[1]
+arguments = sys.argv[2:]
+original_open = os.open
+write_flags = os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_APPEND
+
+def guarded_open(path, flags, mode=0o777, *, dir_fd=None):
+    if flags & write_flags:
+        raise PermissionError(f"write-capable os.open denied: {path}")
+    if dir_fd is None:
+        return original_open(path, flags, mode)
+    return original_open(path, flags, mode, dir_fd=dir_fd)
+
+def deny_mutation(*args, **kwargs):
+    raise PermissionError("filesystem mutation denied")
+
+os.open = guarded_open
+os.chmod = deny_mutation
+os.mkdir = deny_mutation
+os.replace = deny_mutation
+sys.argv = [runtime, *arguments]
+runpy.run_path(runtime, run_name="__main__")
+"""
+
+        def guarded_cli(*arguments: str) -> subprocess.CompletedProcess[str]:
+            return subprocess.run(
+                [sys.executable, "-B", "-c", guarded_runner, str(RUNTIME), *arguments],
+                cwd=str(self.project),
+                env=standalone_env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        watched = [
+            home / ".codex" / "acgm-codex" / "data-location.json",
+            plugin_data,
+            plugin_data / "events.jsonl",
+            plugin_data / "hmac.key",
+            plugin_data / "hmac.key.lock",
+        ]
+        before = {
+            path: (
+                stat.S_IMODE(path.stat().st_mode),
+                path.stat().st_size,
+                path.stat().st_mtime_ns,
+            )
+            for path in watched
+        }
+
+        doctor = guarded_cli("doctor", str(self.project), "--json", "--strict")
+        self.assertEqual(doctor.returncode, 0, doctor.stderr)
+        self.assertTrue(json.loads(doctor.stdout)["healthy"])
+
+        report = guarded_cli(
+            "report", "--project", str(self.project), "--limit", "20", "--json"
+        )
+        self.assertEqual(report.returncode, 0, report.stderr)
+        self.assertEqual(json.loads(report.stdout)["count"], 1)
+
+        after = {
+            path: (
+                stat.S_IMODE(path.stat().st_mode),
+                path.stat().st_size,
+                path.stat().st_mtime_ns,
+            )
+            for path in watched
+        }
+        self.assertEqual(after, before)
 
     def test_ledger_is_sanitized_append_only_and_mode_0600(self) -> None:
         self.init_activate()

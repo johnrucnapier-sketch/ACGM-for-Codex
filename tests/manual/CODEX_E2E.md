@@ -52,6 +52,12 @@ Expected: four skills are discoverable; doctor reports the installed version and
 a real `SessionStart` heartbeat. If the heartbeat is absent, installation is not
 accepted as proof that Hooks ran.
 
+Also run strict doctor and `report --json` through the normal managed Codex tool
+sandbox after the Hook has created its ledger. Record locator, ledger, key, and
+lock mode/size/mtime before and after. Both commands must succeed without
+creating files, calling `chmod`, or opening a write-capable ledger/key lock; the
+metadata snapshot must remain unchanged.
+
 ## 4. Bootstrap lifecycle
 
 Invoke `$governance-bootstrap`. Verify that `init` does not overwrite pre-existing

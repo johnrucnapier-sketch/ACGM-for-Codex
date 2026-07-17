@@ -175,6 +175,9 @@ opaque ID 存储；目标也只保存 HMAC ID；同一 HMAC target 才能关联 
 standalone CLI 与 Hook 共用同一本账本；locator 本身包含这个数据目录路径，不属于 Event
 Ledger 事件内容。若账本仍在但本机 HMAC key 丢失，runtime 会拒绝静默生成新 key；只有把
 旧账本与 key 一起保留/恢复，或把两者一起移走并明确开始新审计 epoch，才能继续。
+Hook 负责初始化账本并加固权限；standalone `doctor` / `report` 只读解析已有 locator、key
+和账本，不会为了检查状态而创建目录、执行 `chmod` 或打开可写 lock，因此可在只允许读取
+plugin data 的受管 Codex 沙箱中运行。
 
 ## 开发验证
 
