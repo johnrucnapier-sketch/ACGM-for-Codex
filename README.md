@@ -67,13 +67,16 @@ recursive forced delete 的已识别写法。被识别为高风险、但包含 s
 Agent 自动克隆准确 tag，并运行：
 
 ```bash
+ACGM_SOURCE="$(mktemp -d)/ACGM-for-Codex"
 git clone --branch v0.2.0-rc.1 --depth 1 \
-  https://github.com/johnrucnapier-sketch/ACGM-for-Codex.git
-cd ACGM-for-Codex
-python3 scripts/quickstart.py --project /准确项目的绝对路径 --dry-run --json
-python3 scripts/quickstart.py --project /准确项目的绝对路径 \
+  https://github.com/johnrucnapier-sketch/ACGM-for-Codex.git "$ACGM_SOURCE"
+python3 "$ACGM_SOURCE/scripts/quickstart.py" \
+  --project /准确项目的绝对路径 --dry-run --json
+python3 "$ACGM_SOURCE/scripts/quickstart.py" --project /准确项目的绝对路径 \
   --plan-digest <dry-run返回的digest> --authorize --json
 ```
+
+工具源码应克隆到目标项目之外的临时目录，避免在被治理仓库中留下嵌套 clone。
 
 可以直接对 Agent 说：
 
@@ -81,8 +84,9 @@ python3 scripts/quickstart.py --project /准确项目的绝对路径 \
 > 安装、治理文件生成、激活和验证。不要覆盖已有项目策略或迁移旧安装。
 
 只有贴 URL、没有要求安装时仍然只代表允许下载与只读检查。Quickstart 的 dry-run 是机器
-校验，不是让用户再审一遍：digest 会绑定官方 source/tag、固定安装命令、准确 Git root、
-Git identity、既有文件 hash 和全部拟写入字节；apply 前任一事实变化都会使授权失效。
+校验，不是让用户再审一遍：digest 会绑定官方 source/tag、固定安装命令、有效 Codex profile
+目标的不可逆身份、准确 Git root、Git identity、既有文件 hash 和全部拟写入字节；apply 前
+任一事实变化都会使授权失效。
 
 全新安装只调用两条固定官方命令：`codex plugin marketplace add
 johnrucnapier-sketch/ACGM-for-Codex --ref v0.2.0-rc.1 --json` 与 `codex plugin

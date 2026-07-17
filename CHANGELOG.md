@@ -7,8 +7,9 @@
   checks. A direct install-and-enable request for one exact project authorizes
   the fixed `standard-v1` plan without repeated ACGM confirmation prompts.
 - Bind quickstart plan/apply to one digest covering source/ref, fixed install
-  commands, exact Git root and identity, existing managed-file hashes, preset,
-  and proposed bytes. Stale plans fail before project mutation.
+  commands, normalized effective Codex profile target identity, exact Git root
+  and identity, existing managed-file hashes, preset, and proposed bytes. Stale
+  plans fail before configuration or project mutation.
 - Allow only a unique, enabled, user-scope official `0.1.0-rc.2`,
   `0.1.0-rc.3`, or `0.1.0-rc.4` to upgrade automatically after its persisted
   source/ref, policy, exact tag snapshot, package bytes, and sole cache entry all

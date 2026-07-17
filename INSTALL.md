@@ -22,22 +22,26 @@ second time.
 The Agent performs:
 
 ```bash
+ACGM_SOURCE="$(mktemp -d)/ACGM-for-Codex"
 git clone --branch v0.2.0-rc.1 --depth 1 \
-  https://github.com/johnrucnapier-sketch/ACGM-for-Codex.git
-cd ACGM-for-Codex
-python3 scripts/quickstart.py \
+  https://github.com/johnrucnapier-sketch/ACGM-for-Codex.git "$ACGM_SOURCE"
+python3 "$ACGM_SOURCE/scripts/quickstart.py" \
   --project /absolute/path/to/the/exact/project \
   --dry-run --json
-python3 scripts/quickstart.py \
+python3 "$ACGM_SOURCE/scripts/quickstart.py" \
   --project /absolute/path/to/the/exact/project \
   --plan-digest <digest-from-dry-run> \
   --authorize --json
 ```
 
+The temporary source directory must stay outside the target project so the
+installation does not leave a nested ACGM checkout in the governed repository.
+
 The dry run is machine verification, not another user ceremony. Its digest
-binds the official repository/tag/version, fixed Codex plugin commands, exact
-Git root and identity, `standard-v1` preset, pre-existing managed-file hashes,
-and every proposed byte. Apply recomputes the plan; any change invalidates the
+binds the official repository/tag/version, fixed Codex plugin commands, the
+effective Codex profile target's non-reversible identity, exact Git root and
+identity, `standard-v1` preset, pre-existing managed-file hashes, and every
+proposed byte. Apply recomputes the plan; any change invalidates the
 authorization before mutation.
 
 中文：用户只需明确要求“在这个准确项目里安装并启用官方 ACGM，采用推荐默认值”。Agent

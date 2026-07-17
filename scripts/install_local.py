@@ -57,6 +57,7 @@ PUBLISHED_FILES = (
     "scripts/generate-package-manifest.py",
     "scripts/install_local.py",
     "scripts/preflight.py",
+    "scripts/quickstart.py",
     "scripts/release_check.py",
     "skills/activity-report/SKILL.md",
     "skills/activity-report/agents/openai.yaml",
@@ -70,6 +71,7 @@ PUBLISHED_FILES = (
     "tests/test_bootstrap.py",
     "tests/test_install_local.py",
     "tests/test_package_contract.py",
+    "tests/test_quickstart.py",
     "tests/test_release_tools.py",
     "tests/test_runtime.py",
 )

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import io
 import json
 import os
@@ -36,7 +37,9 @@ class OneConsentQuickstartTests(unittest.TestCase):
         self.temporary.cleanup()
 
     @staticmethod
-    def install_payload(*, dry_run: bool) -> dict[str, object]:
+    def install_payload(
+        *, dry_run: bool, target: str = "/fixture/codex-home"
+    ) -> dict[str, object]:
         payload: dict[str, object] = {
             "ok": True,
             "status": "DRY_RUN_PLAN_READY"
@@ -53,7 +56,13 @@ class OneConsentQuickstartTests(unittest.TestCase):
             "partial": False,
         }
         authorization_plan = {
-            "schema": "acgm-codex-install-authorization-plan-v1",
+            "schema": "acgm-codex-install-authorization-plan-v2",
+            "install_target": {
+                "schema": "acgm-codex-install-target-v1",
+                "logical_path_sha256": hashlib.sha256(
+                    target.encode("utf-8")
+                ).hexdigest(),
+            },
             "status": payload["initial_status"],
             "version": payload["version"],
             "tag": payload["tag"],
@@ -253,6 +262,35 @@ class OneConsentQuickstartTests(unittest.TestCase):
             )
 
         self.assertEqual(result["status"], "PLAN_STALE")
+        self.assertTrue(all(call.kwargs["dry_run"] for call in installer.call_args_list))
+        self.assertFalse((self.project / ".acgm").exists())
+
+    def test_changed_codex_home_invalidates_combined_digest_before_mutation(
+        self,
+    ) -> None:
+        first = self.install_payload(
+            dry_run=True, target="/fixture/first-codex-home"
+        )
+        second = self.install_payload(
+            dry_run=True, target="/fixture/second-codex-home"
+        )
+        with mock.patch.object(
+            one_consent.bootstrap, "execute", side_effect=[first, second]
+        ) as installer:
+            prepared = one_consent.plan(
+                self.source, self.project, env=self.environment
+            )
+            result = one_consent.execute(
+                self.source,
+                self.project,
+                dry_run=False,
+                authorized=True,
+                expected_digest=str(prepared["plan_digest"]),
+                env=self.environment,
+            )
+
+        self.assertEqual(result["status"], "PLAN_STALE")
+        self.assertEqual(installer.call_count, 2)
         self.assertTrue(all(call.kwargs["dry_run"] for call in installer.call_args_list))
         self.assertFalse((self.project / ".acgm").exists())
 

@@ -201,6 +201,7 @@ class FakeCodex:
         self.mutations: list[list[str]] = []
         self.codex_cwds: list[Path] = []
         self.codex_cwds_safe: list[bool] = []
+        self.codex_homes: list[str | None] = []
         if self.marketplace:
             self.add_marketplace()
 
@@ -245,6 +246,7 @@ class FakeCodex:
         args = list(argv)
         if args[0] == "git":
             return preflight.run_command(args, cwd, env, timeout)
+        self.codex_homes.append(env.get("CODEX_HOME"))
         if cwd is not None:
             self.codex_cwds.append(cwd)
             self.codex_cwds_safe.append(preflight.neutral_cwd_is_safe(cwd))
@@ -926,6 +928,78 @@ class BootstrapTests(unittest.TestCase):
             self.assertNotEqual(
                 result["install_plan_digest"], prepared["install_plan_digest"]
             )
+
+    def test_install_digest_binds_exact_codex_home_before_mutation(self) -> None:
+        temp, source, first_env = self.fixture()
+        with temp:
+            first_fake = FakeCodex(source, first_env)
+            prepared = bootstrap.execute(
+                source,
+                dry_run=True,
+                authorized=False,
+                env=first_env,
+                runner=first_fake,
+            )
+            second_env = dict(first_env)
+            second_home = Path(temp.name) / "other-empty-codex-home"
+            second_env["CODEX_HOME"] = str(second_home)
+            second_fake = FakeCodex(source, second_env)
+
+            result = bootstrap.execute(
+                source,
+                dry_run=False,
+                authorized=True,
+                expected_plan_digest=str(prepared["install_plan_digest"]),
+                env=second_env,
+                runner=second_fake,
+            )
+
+            self.assertEqual(result["status"], "INSTALL_PLAN_STALE")
+            self.assertEqual(result["commands_run"], [])
+            self.assertEqual(second_fake.mutations, [])
+            self.assertFalse(second_home.exists())
+            self.assertNotEqual(
+                result["authorization_plan"]["install_target"],
+                prepared["authorization_plan"]["install_target"],
+            )
+            self.assertNotEqual(
+                result["install_plan_digest"], prepared["install_plan_digest"]
+            )
+
+    def test_relative_codex_home_is_normalized_for_probe_and_mutation(self) -> None:
+        temp, source, env = self.fixture()
+        with temp:
+            relative = "relative-codex-profile"
+            env["CODEX_HOME"] = relative
+            fake = FakeCodex(source, env)
+
+            prepared = bootstrap.execute(
+                source,
+                dry_run=True,
+                authorized=False,
+                env=env,
+                runner=fake,
+            )
+
+            expected = str((Path.cwd() / relative).resolve(strict=False))
+            self.assertTrue(prepared["ok"])
+            self.assertEqual(
+                prepared["authorization_plan"]["install_target"]["selector"],
+                "CODEX_HOME",
+            )
+            self.assertTrue(fake.codex_cwds)
+            self.assertTrue(fake.codex_homes)
+            self.assertEqual(set(fake.codex_homes), {expected})
+
+    def test_tilde_home_default_is_normalized_once(self) -> None:
+        normalized = preflight.normalized_codex_environment(
+            {"HOME": "~/profile-root"}, base=Path("/ignored-anchor")
+        )
+
+        self.assertNotIn("CODEX_HOME", normalized)
+        self.assertEqual(
+            normalized["HOME"], str(Path.home() / "profile-root")
+        )
 
     def test_source_checkout_may_ignore_local_python_runtime_artifacts(self) -> None:
         temp, source, env = self.fixture()

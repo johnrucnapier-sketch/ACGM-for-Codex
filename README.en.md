@@ -79,13 +79,17 @@ require item-by-item approval or hand-written governance files.
 The Agent clones the exact tag and runs:
 
 ```bash
+ACGM_SOURCE="$(mktemp -d)/ACGM-for-Codex"
 git clone --branch v0.2.0-rc.1 --depth 1 \
-  https://github.com/johnrucnapier-sketch/ACGM-for-Codex.git
-cd ACGM-for-Codex
-python3 scripts/quickstart.py --project /absolute/path/to/the/exact/project --dry-run --json
-python3 scripts/quickstart.py --project /absolute/path/to/the/exact/project \
+  https://github.com/johnrucnapier-sketch/ACGM-for-Codex.git "$ACGM_SOURCE"
+python3 "$ACGM_SOURCE/scripts/quickstart.py" \
+  --project /absolute/path/to/the/exact/project --dry-run --json
+python3 "$ACGM_SOURCE/scripts/quickstart.py" --project /absolute/path/to/the/exact/project \
   --plan-digest <digest-from-dry-run> --authorize --json
 ```
+
+The Agent clones the tool source into a temporary directory outside the target
+project, so onboarding does not leave a nested checkout in the governed repo.
 
 You can say:
 
@@ -96,9 +100,10 @@ You can say:
 
 A bare URL without an install request still permits only download and read-only
 inspection. Quickstart dry-run is machine verification, not a second approval
-ceremony. Its digest binds the official source/tag, fixed install commands,
-exact Git root and identity, existing managed-file hashes, and every proposed
-byte. Any changed fact invalidates the grant before apply.
+ceremony. Its digest binds the official source/tag, fixed install commands, a
+non-reversible identity for the effective Codex profile target, exact Git root
+and identity, existing managed-file hashes, and every proposed byte. Any changed
+fact invalidates the grant before apply.
 
 For a fresh install, bootstrap invokes `codex plugin marketplace add
 johnrucnapier-sketch/ACGM-for-Codex --ref v0.2.0-rc.1 --json` and then `codex

@@ -18,9 +18,10 @@ When the user explicitly asks to install or update ACGM for Codex:
 
    `python3 scripts/quickstart.py --project <exact-root> --plan-digest <digest-from-dry-run> --authorize --json`
 
-   The generated digest binds the source, fixed plugin commands, exact project,
-   Git identity, preset, existing asset hashes, and proposed bytes. If any bound
-   fact changes, authorization expires before mutation.
+   The generated digest binds the source, fixed plugin commands, effective
+   Codex profile target identity, exact project, Git identity, preset, existing
+   asset hashes, and proposed bytes. If any bound fact changes, authorization
+   expires before mutation.
 4. Never remove, replace, merge, or adopt `acgm-codex@personal`, duplicate
    installs, unknown sources, another scope, newer/unknown versions, or private
    `PLUGIN_DATA` / Event Ledger content. The sole plugin-upgrade exception is one

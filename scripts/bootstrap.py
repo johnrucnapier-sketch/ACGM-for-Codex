@@ -15,6 +15,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import stat
 import sys
 from typing import Any, Sequence
 
@@ -66,8 +67,50 @@ def _command_summary(argv: Sequence[str], result: preflight.CommandResult) -> di
     }
 
 
+def _entry_identity(path: Path) -> dict[str, Any]:
+    try:
+        metadata = path.lstat()
+    except FileNotFoundError:
+        return {"kind": "absent"}
+    if stat.S_ISDIR(metadata.st_mode):
+        kind = "directory"
+    elif stat.S_ISREG(metadata.st_mode):
+        kind = "regular-file"
+    elif stat.S_ISLNK(metadata.st_mode):
+        kind = "symlink"
+    else:
+        kind = "special"
+    return {
+        "kind": kind,
+        "device": metadata.st_dev,
+        "inode": metadata.st_ino,
+    }
+
+
+def _codex_install_target(environment: dict[str, str]) -> dict[str, Any]:
+    """Return a non-reversible identity for the exact Codex profile target."""
+
+    logical = preflight._codex_home(environment)
+    if not logical.is_absolute():
+        raise ValueError("effective Codex home must be absolute")
+    logical = Path(os.path.abspath(os.path.normpath(str(logical))))
+    resolved = logical.resolve(strict=False)
+    return {
+        "schema": "acgm-codex-install-target-v1",
+        "selector": "CODEX_HOME"
+        if environment.get("CODEX_HOME")
+        else "HOME_DEFAULT",
+        "logical_path_sha256": hashlib.sha256(os.fsencode(str(logical))).hexdigest(),
+        "resolved_path_sha256": hashlib.sha256(os.fsencode(str(resolved))).hexdigest(),
+        "logical_entry": _entry_identity(logical),
+        "resolved_entry": _entry_identity(resolved),
+    }
+
+
 def _install_authorization_plan(
-    source_root: Path, initial: dict[str, Any]
+    source_root: Path,
+    initial: dict[str, Any],
+    install_target: dict[str, Any],
 ) -> dict[str, Any]:
     """Return the complete stable install state and exact executable plan."""
 
@@ -77,8 +120,9 @@ def _install_authorization_plan(
         if isinstance(action, dict) and isinstance(action.get("argv"), list)
     ]
     return {
-        "schema": "acgm-codex-install-authorization-plan-v1",
+        "schema": "acgm-codex-install-authorization-plan-v2",
         "source_root": str(source_root),
+        "install_target": install_target,
         "version": preflight.VERSION,
         "tag": preflight.TAG,
         "status": initial.get("status"),
@@ -110,14 +154,18 @@ def execute(
     runner: preflight.Runner = preflight.run_command,
 ) -> dict[str, Any]:
     source_root = source_root.expanduser().resolve()
-    environment = dict(env or os.environ)
+    environment = preflight.normalized_codex_environment(
+        dict(env or os.environ)
+    )
     initial = preflight.evaluate(source_root, env=environment, runner=runner)
     plan = [
         action
         for action in initial["actions"]
         if isinstance(action, dict) and isinstance(action.get("argv"), list)
     ]
-    authorization_plan = _install_authorization_plan(source_root, initial)
+    authorization_plan = _install_authorization_plan(
+        source_root, initial, _codex_install_target(environment)
+    )
     authorization_plan_digest = _install_plan_digest(authorization_plan)
     payload: dict[str, Any] = {
         "schema": "acgm-codex-bootstrap-v1",

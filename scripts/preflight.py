@@ -729,6 +729,50 @@ def _codex_home(env: dict[str, str]) -> Path:
     return home / ".codex"
 
 
+def normalized_codex_environment(
+    env: dict[str, str], *, base: Path | None = None
+) -> dict[str, str]:
+    """Make the effective Codex profile path independent of probe cwd.
+
+    Codex control commands intentionally run from a fresh neutral directory.
+    A relative ``CODEX_HOME`` or ``HOME`` would otherwise make our filesystem
+    inspection and the Codex subprocess address different profiles.  Normalize
+    the selected input once before either operation and pass the same absolute
+    value to every probe and mutation.
+    """
+
+    environment = dict(env)
+    anchor = (base or Path.cwd()).resolve(strict=False)
+
+    def absolute(value: str, *, tilde_home: str) -> Path:
+        if value == "~" or value.startswith("~/"):
+            configured_home = Path(tilde_home).expanduser()
+            suffix = value[2:] if value.startswith("~/") else ""
+            candidate = configured_home / suffix
+        else:
+            candidate = Path(value).expanduser()
+        if not candidate.is_absolute():
+            candidate = anchor / candidate
+        return Path(os.path.abspath(os.path.normpath(str(candidate))))
+
+    configured = environment.get("CODEX_HOME")
+    if configured:
+        environment["CODEX_HOME"] = str(
+            absolute(
+                configured,
+                tilde_home=environment.get("HOME", str(Path.home())),
+            )
+        )
+    else:
+        environment["HOME"] = str(
+            absolute(
+                environment.get("HOME", str(Path.home())),
+                tilde_home=str(Path.home()),
+            )
+        )
+    return environment
+
+
 def _marketplace_source(item: dict[str, Any]) -> dict[str, Any]:
     source = item.get("marketplaceSource")
     if not isinstance(source, dict):
@@ -1492,7 +1536,7 @@ def evaluate(
     python_version: tuple[int, int] | None = None,
 ) -> dict[str, Any]:
     source_root = source_root.expanduser().resolve()
-    environment = dict(env or os.environ)
+    environment = normalized_codex_environment(dict(env or os.environ))
     system = platform_name or platform.system()
     py_version = python_version or (sys.version_info.major, sys.version_info.minor)
     errors: list[str] = []

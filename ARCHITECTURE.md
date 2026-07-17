@@ -9,7 +9,8 @@ Hook, tool, trust, and data contracts.
 1. A direct request to install and enable official ACGM in one exact project
    with recommended defaults authorizes one `standard-v1` quickstart plan. A
    bare repository URL does not authorize configuration changes.
-2. Read-only planning binds the immutable source/tag, fixed plugin commands,
+2. Read-only planning binds the immutable source/tag, fixed plugin commands, a
+   non-reversible identity for the normalized effective Codex profile target,
    exact Git root and identity, existing managed-file hashes, and every proposed
    byte into one digest.
 3. Apply recomputes that digest, installs the exact Git marketplace package,

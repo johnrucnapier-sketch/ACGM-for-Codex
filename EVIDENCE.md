@@ -53,8 +53,9 @@ unpromoted.
 - Targeted fixtures in `tests/test_quickstart.py` exercise the combined
   install-plus-project plan, the single authorization boundary, external
   install ordering, and stale-digest rejection before install mutation. They
-  also bind the starting official version/ref and reject an install-plan change
-  before the first Codex configuration mutation.
+  also bind the effective Codex profile target and starting official
+  version/ref, and reject either change before the first Codex configuration
+  mutation.
 - Bootstrap fixtures allow only verified official RC2/RC3/RC4 upgrades, require
   the old marketplace tag snapshot and installed cache to match, verify the
   real Codex marketplace-metadata and full-Git-cache shapes, pin each known old
