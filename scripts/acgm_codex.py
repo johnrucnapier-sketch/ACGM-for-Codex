@@ -10,6 +10,8 @@ credentials.
 from __future__ import annotations
 
 import argparse
+import ctypes
+import errno
 import hashlib
 import hmac
 import json
@@ -23,7 +25,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from typing import Any, Callable, Iterable, Optional
 
 try:
     import fcntl
@@ -46,7 +48,23 @@ STATE_SCHEMA = "acgm-codex-state-v1"
 LEDGER_SCHEMA = "acgm-codex-event-v1"
 CASE_SCHEMA = "acgm-codex-case-v1"
 DATA_LOCATION_SCHEMA = "acgm-codex-data-location-v1"
+QUICKSTART_SCHEMA = "acgm-codex-quickstart-plan-v1"
+QUICKSTART_RECEIPT_SCHEMA = "acgm-codex-quickstart-receipt-v1"
+QUICKSTART_PRESET = "standard-v1"
+QUICKSTART_COMPATIBLE_STATE_VERSIONS = (
+    "0.1.0-rc.2",
+    "0.1.0-rc.3",
+    "0.1.0-rc.4",
+)
+QUICKSTART_MANAGED_DIRECTORIES = (
+    ".acgm",
+    ".governance",
+    ".governance/decisions",
+    ".governance/snapshots",
+)
 GATE_TTL_SECONDS = 180
+MAX_WORKSPACE_ENTRIES = 128
+MAX_DIRECT_REPOSITORIES = 16
 
 INSTALLED_NOT_BOOTSTRAPPED = "INSTALLED_NOT_BOOTSTRAPPED"
 PARTIALLY_GOVERNED = "PARTIALLY_GOVERNED"
@@ -165,9 +183,98 @@ privacy:
   persist_commands_or_prompts: false
 """
 
+STANDARD_CONSTITUTION = """# Project Constitution
+
+This project adopts the ACGM `standard-v1` governance preset. The project owner
+approved these versioned defaults through the one-consent quickstart flow.
+
+## Authority
+
+Project-specific instructions and explicit user decisions remain authoritative.
+This Constitution supplies durable defaults where the project has not stated a
+more specific rule. Later changes require explicit project-owner authorization.
+
+## Truth hierarchy
+
+1. Current code, configuration, and Git state are current facts.
+2. Version-control history is evidence of recorded change.
+3. Historical discussions explain decisions but do not override current facts.
+4. Claims about completion require proportionate verification.
+
+## Change discipline
+
+- Verify the active project root, branch, worktree, and dirty state before a
+  consequential change.
+- Preserve unrelated work; do not use destructive cleanup to simplify a task.
+- Require explicit authorization for destructive, external, credential, release,
+  deployment, permission, or irreversible actions.
+- Keep implementation, documentation, and validation evidence aligned.
+- Never expose credentials, tokens, cookies, private transcript content, or other
+  sensitive local evidence.
+
+## Completion
+
+A task is complete only when requested behavior is implemented, relevant checks
+pass, and remaining limitations or pending platform acceptance are stated plainly.
+"""
+
+STANDARD_SCOPE = """version: 1
+preset: standard-v1
+project_root: .
+governed:
+  - .
+excluded:
+  - .git
+  - .acgm
+  - third_party_dependencies
+  - generated_artifacts
+require_current_state_check: true
+require_post_action_verification: true
+require_explicit_authorization_for:
+  - destructive_changes
+  - external_state_mutation
+  - credential_or_permission_changes
+  - releases_and_deployments
+privacy:
+  persist_raw_paths: false
+  persist_commands_or_prompts: false
+  persist_credentials_or_transcripts: false
+"""
+
+STANDARD_DECISION = """# Adopt ACGM standard-v1
+
+Status: accepted
+
+The project adopts the versioned ACGM `standard-v1` preset through the
+one-consent quickstart flow. Existing project-owned instructions are preserved
+and take precedence when they are more specific. ACGM may generate missing
+governance assets, but it must not overwrite unknown existing policy.
+"""
+
 
 class RuntimeProblem(Exception):
     """A user-actionable runtime or project-state problem."""
+
+
+class AmbiguousWorkspace(RuntimeProblem):
+    """A container workspace has no single safe implicit project root."""
+
+    def __init__(
+        self,
+        container: Path,
+        candidates: Iterable[Path] = (),
+        *,
+        reason: Optional[str] = None,
+    ) -> None:
+        self.container = container
+        self.candidates = tuple(candidates)
+        names = ", ".join(path.name for path in self.candidates)
+        detail = f" Candidates: {names}." if names else ""
+        super().__init__(
+            (reason or "multiple repositories were found in an empty container workspace")
+            + "; open the intended repository directly or pass its exact path."
+            + detail
+        )
 
 
 def _supported_platform() -> bool:
@@ -188,6 +295,104 @@ def _installed() -> bool:
     return (_plugin_root() / ".codex-plugin" / "plugin.json").is_file()
 
 
+def _git_probe(root: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
+    environment = os.environ.copy()
+    for name in (
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_INDEX_FILE",
+        "GIT_COMMON_DIR",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    ):
+        environment.pop(name, None)
+    environment["GIT_OPTIONAL_LOCKS"] = "0"
+    try:
+        return subprocess.run(
+            ["git", "-C", str(root), *arguments],
+            env=environment,
+            text=True,
+            capture_output=True,
+            timeout=3,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return subprocess.CompletedProcess([], 127, "", "git probe failed")
+
+
+def _verified_git_root(candidate: Path) -> Optional[Path]:
+    result = _git_probe(candidate, "rev-parse", "--show-toplevel")
+    if result.returncode != 0 or not result.stdout.strip():
+        return None
+    try:
+        return Path(result.stdout.strip()).resolve()
+    except OSError:
+        return None
+
+
+def _adapter_declares_active(root: Path) -> bool:
+    path = _state_path(root)
+    if path.is_symlink() or not path.is_file():
+        return False
+    try:
+        state = _safe_read_json(path)
+    except RuntimeProblem:
+        return False
+    return state.get("schema") == STATE_SCHEMA and state.get("active") is True
+
+
+def _container_workspace_root(root: Path) -> Path:
+    # An active adapter is an intentional project marker.  An inactive or
+    # malformed residual marker is not: letting it win here would make an empty
+    # container repository silently swallow one of several child repositories.
+    if _adapter_declares_active(root):
+        return root
+    if _git_probe(root, "rev-parse", "--verify", "HEAD").returncode == 0:
+        return root
+    index = _git_probe(root, "ls-files", "-z")
+    if index.returncode != 0 or index.stdout:
+        return root
+    try:
+        entries = list(root.iterdir())
+    except OSError:
+        return root
+    if len(entries) > MAX_WORKSPACE_ENTRIES:
+        raise AmbiguousWorkspace(
+            root,
+            reason="the unborn workspace contains too many entries to resolve safely",
+        )
+    repositories: list[Path] = []
+    non_container_entries: list[Path] = []
+    for entry in entries:
+        if entry.name == ".git":
+            continue
+        if entry.is_symlink() or not entry.is_dir() or not (entry / ".git").exists():
+            non_container_entries.append(entry)
+            continue
+        verified = _verified_git_root(entry)
+        if verified is None or verified != entry.resolve():
+            non_container_entries.append(entry)
+            continue
+        repositories.append(verified)
+        if len(repositories) > MAX_DIRECT_REPOSITORIES:
+            raise AmbiguousWorkspace(root, repositories)
+    repositories.sort(key=lambda path: path.name.casefold())
+    if len(repositories) > 1:
+        raise AmbiguousWorkspace(root, repositories)
+    if len(repositories) == 1 and non_container_entries:
+        raise AmbiguousWorkspace(
+            root,
+            repositories,
+            reason=(
+                "the unborn workspace contains both a child repository and "
+                "non-container files"
+            ),
+        )
+    if len(repositories) == 1:
+        return repositories[0]
+    return root
+
+
 def _project_root(start: Optional[str] = None) -> Path:
     candidate = Path(start or os.getcwd()).expanduser()
     if not candidate.exists():
@@ -197,7 +402,9 @@ def _project_root(start: Optional[str] = None) -> Path:
         candidate = candidate.parent
     chain = (candidate,) + tuple(candidate.parents)
     for parent in chain:
-        if (parent / ".acgm" / "codex.json").exists() or (parent / ".git").exists():
+        if (parent / ".git").exists() and _verified_git_root(parent) == parent:
+            return _container_workspace_root(parent)
+        if _adapter_declares_active(parent):
             return parent
     return candidate
 
@@ -235,22 +442,520 @@ def _atomic_json(path: Path, value: dict[str, Any], mode: int = 0o600) -> None:
             pass
 
 
-def _write_new_json(path: Path, value: dict[str, Any], mode: int = 0o600) -> None:
+def _write_new_bytes(path: Path, payload: bytes, mode: int) -> str:
+    """Publish one complete new file without exposing a writable partial target.
+
+    ``O_EXCL`` on the final path only protects the creation syscall.  Writing
+    through that descriptor afterwards exposes a zero-length or partial file
+    that another writer can edit before our write completes.  Prepare the full
+    payload under a private name, fsync it, then use link(2) as the
+    no-overwrite publication point instead.
+    """
+
     path.parent.mkdir(parents=True, exist_ok=True)
-    payload = json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
-    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode)
+    token = secrets.token_hex(12)
+    prepared = path.with_name(f".{path.name}.acgm-create-{token}")
+    payload_sha256 = hashlib.sha256(payload).hexdigest()
+    descriptor = os.open(prepared, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode)
     try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+        with os.fdopen(descriptor, "wb") as handle:
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
-        os.chmod(path, mode)
+        os.chmod(prepared, mode)
     except Exception:
         try:
-            path.unlink()
+            prepared.unlink()
         except OSError:
             pass
         raise
+
+    try:
+        # link(2) never replaces a target created by a concurrent writer.
+        os.link(prepared, path, follow_symlinks=False)
+        prepared_stat = prepared.lstat()
+        current_stat = path.lstat()
+        if (
+            not stat.S_ISREG(current_stat.st_mode)
+            or current_stat.st_dev != prepared_stat.st_dev
+            or current_stat.st_ino != prepared_stat.st_ino
+            or not hmac.compare_digest(_sha256(path), payload_sha256)
+        ):
+            raise RuntimeProblem("quickstart target changed during creation")
+        return payload_sha256
+    finally:
+        try:
+            prepared.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def _write_new_json(path: Path, value: dict[str, Any], mode: int = 0o600) -> str:
+    payload = (
+        json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    ).encode("utf-8")
+    return _write_new_bytes(path, payload, mode)
+
+
+def _entry_exists_at(directory_fd: int, name: str) -> bool:
+    try:
+        os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        return False
+    return True
+
+
+def _regular_bytes_at(directory_fd: int, name: str) -> bytes:
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0)
+    descriptor = os.open(name, flags, dir_fd=directory_fd)
+    try:
+        before = os.fstat(descriptor)
+        if not stat.S_ISREG(before.st_mode):
+            raise RuntimeProblem("quickstart target is not a regular file")
+        with os.fdopen(descriptor, "rb", closefd=False) as handle:
+            content = handle.read()
+        after = os.fstat(descriptor)
+        if (
+            before.st_size != after.st_size
+            or before.st_mtime_ns != after.st_mtime_ns
+            or before.st_ctime_ns != after.st_ctime_ns
+        ):
+            raise RuntimeProblem("quickstart target changed while reading")
+        return content
+    finally:
+        os.close(descriptor)
+
+
+def _sha256_at(directory_fd: int, name: str) -> str:
+    return hashlib.sha256(_regular_bytes_at(directory_fd, name)).hexdigest()
+
+
+def _safe_read_json_at(directory_fd: int, name: str) -> dict[str, Any]:
+    try:
+        value = json.loads(_regular_bytes_at(directory_fd, name).decode("utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise RuntimeProblem("adapter state is unreadable or invalid JSON") from exc
+    if not isinstance(value, dict):
+        raise RuntimeProblem("adapter state must be a JSON object")
+    return value
+
+
+def _regular_digest_at(directory_fd: int, name: str) -> str:
+    """Hash one stable regular directory entry without following symlinks."""
+
+    try:
+        before = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+    except OSError as exc:
+        raise RuntimeProblem("quickstart managed file is unavailable") from exc
+    if not stat.S_ISREG(before.st_mode):
+        raise RuntimeProblem("quickstart managed file is not a regular file")
+    digest = _sha256_at(directory_fd, name)
+    try:
+        after = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+    except OSError as exc:
+        raise RuntimeProblem("quickstart managed file changed while hashing") from exc
+    if (
+        not stat.S_ISREG(after.st_mode)
+        or after.st_dev != before.st_dev
+        or after.st_ino != before.st_ino
+    ):
+        raise RuntimeProblem("quickstart managed file changed while hashing")
+    return digest
+
+
+def _directory_baseline_at(directory_fd: int, prefix: str = "") -> dict[str, str]:
+    """Recursively fingerprint non-hidden regular files from an anchored dirfd."""
+
+    try:
+        names = sorted(os.listdir(directory_fd))
+    except OSError as exc:
+        raise RuntimeProblem("quickstart managed directory is unreadable") from exc
+    baseline: dict[str, str] = {}
+    for name in names:
+        if not name or name in {".", ".."} or name.startswith("."):
+            continue
+        relative = f"{prefix}/{name}" if prefix else name
+        try:
+            metadata = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+        except OSError as exc:
+            raise RuntimeProblem(
+                "quickstart managed directory changed while scanning"
+            ) from exc
+        if stat.S_ISREG(metadata.st_mode):
+            baseline[relative] = _regular_digest_at(directory_fd, name)
+            continue
+        if stat.S_ISDIR(metadata.st_mode):
+            expected = {"device": metadata.st_dev, "inode": metadata.st_ino}
+            child_fd = _open_quickstart_managed_directory(
+                directory_fd, name, expected
+            )
+            try:
+                baseline.update(_directory_baseline_at(child_fd, relative))
+                _verify_quickstart_directory_entry(directory_fd, name, child_fd)
+            finally:
+                os.close(child_fd)
+            continue
+        raise RuntimeProblem(
+            "quickstart managed directory contains a symlink or special entry"
+        )
+    return baseline
+
+
+def _quickstart_component_baseline_at(
+    root_fd: int,
+    governance_fd: int,
+    decisions_fd: int,
+    snapshots_fd: int,
+) -> dict[str, Any]:
+    """Compute the governance baseline only through already-anchored directories."""
+
+    return {
+        "files": {
+            "CONSTITUTION.md": _regular_digest_at(root_fd, "CONSTITUTION.md"),
+            "AGENTS.md": _regular_digest_at(root_fd, "AGENTS.md"),
+            ".governance/scope.yml": _regular_digest_at(
+                governance_fd, "scope.yml"
+            ),
+        },
+        "directories": {
+            ".governance/decisions": _directory_baseline_at(decisions_fd),
+            ".governance/snapshots": _directory_baseline_at(snapshots_fd),
+        },
+    }
+
+
+def _verify_quickstart_asset_postimages_at(
+    assets: Iterable[dict[str, Any]],
+    locations: dict[str, tuple[int, str]],
+) -> None:
+    """Revalidate every managed asset entry and digest without path traversal."""
+
+    for asset in assets:
+        path = str(asset.get("path"))
+        location = locations.get(path)
+        expected = asset.get("after_sha256")
+        if location is None or not isinstance(expected, str):
+            raise RuntimeProblem("quickstart plan contains an invalid managed asset")
+        directory_fd, name = location
+        if not hmac.compare_digest(_regular_digest_at(directory_fd, name), expected):
+            raise RuntimeProblem(f"quickstart managed asset changed: {path}")
+
+
+def _write_new_bytes_at(
+    directory_fd: int, name: str, payload: bytes, mode: int
+) -> str:
+    """Publish a complete file relative to one already-open parent directory."""
+
+    if not name or "/" in name or name in {".", ".."}:
+        raise RuntimeProblem("quickstart received an unsafe managed file name")
+    token = secrets.token_hex(12)
+    prepared = f".{name}.acgm-create-{token}"
+    payload_sha256 = hashlib.sha256(payload).hexdigest()
+    descriptor = os.open(
+        prepared,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+        mode,
+        dir_fd=directory_fd,
+    )
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+            os.fchmod(handle.fileno(), mode)
+    except Exception:
+        try:
+            os.unlink(prepared, dir_fd=directory_fd)
+        except OSError:
+            pass
+        raise
+
+    try:
+        os.link(
+            prepared,
+            name,
+            src_dir_fd=directory_fd,
+            dst_dir_fd=directory_fd,
+            follow_symlinks=False,
+        )
+        prepared_stat = os.stat(
+            prepared, dir_fd=directory_fd, follow_symlinks=False
+        )
+        current_stat = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+        if (
+            not stat.S_ISREG(current_stat.st_mode)
+            or current_stat.st_dev != prepared_stat.st_dev
+            or current_stat.st_ino != prepared_stat.st_ino
+            or not hmac.compare_digest(
+                _sha256_at(directory_fd, name), payload_sha256
+            )
+        ):
+            raise RuntimeProblem("quickstart target changed during creation")
+        return payload_sha256
+    finally:
+        try:
+            os.unlink(prepared, dir_fd=directory_fd)
+        except FileNotFoundError:
+            pass
+
+
+def _write_new_json_at(
+    directory_fd: int,
+    name: str,
+    value: dict[str, Any],
+    mode: int = 0o600,
+) -> str:
+    payload = (
+        json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    ).encode("utf-8")
+    return _write_new_bytes_at(directory_fd, name, payload, mode)
+
+
+def _path_entry_exists(path: Path) -> bool:
+    """Return whether a directory entry exists, including a broken symlink."""
+
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        return False
+    return True
+
+
+def _quickstart_cas_bytes(
+    path: Path,
+    payload: bytes,
+    expected_sha256: str,
+    *,
+    mode: int,
+) -> str:
+    """Replace one known regular file without overwriting a concurrent edit.
+
+    POSIX rename has no compare-and-swap primitive: a final hash check followed
+    by ``os.replace`` still has a lost-update window.  Quickstart therefore
+    detaches the current directory entry first, verifies that detached
+    preimage, and publishes the prepared postimage with a no-overwrite hard
+    link.  A concurrent writer either becomes the detached preimage (and fails
+    the hash check) or wins the now-empty target name (and makes the link fail).
+    In both cases its bytes are preserved and quickstart reports partial state.
+    """
+
+    if not isinstance(expected_sha256, str) or not re.fullmatch(
+        r"[0-9a-f]{64}", expected_sha256
+    ):
+        raise RuntimeProblem("quickstart CAS requires an exact preimage digest")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    token = secrets.token_hex(12)
+    prepared = path.with_name(f".{path.name}.acgm-prepared-{token}")
+    displaced = path.with_name(f".{path.name}.acgm-preimage-{token}")
+    payload_sha256 = hashlib.sha256(payload).hexdigest()
+    descriptor = os.open(prepared, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(prepared, mode)
+    except Exception:
+        try:
+            prepared.unlink()
+        except OSError:
+            pass
+        raise
+
+    detached = False
+    try:
+        # The random destination is private to this operation.  Whatever entry
+        # occupies `path` at this exact syscall boundary is what gets verified.
+        os.rename(path, displaced)
+        detached = True
+        metadata = displaced.lstat()
+        if not stat.S_ISREG(metadata.st_mode):
+            raise RuntimeProblem("quickstart target changed before final CAS")
+        if not hmac.compare_digest(_sha256(displaced), expected_sha256):
+            raise RuntimeProblem("quickstart target changed before final CAS")
+
+        # link(2) is the commit point and never replaces an entry created by a
+        # concurrent writer while the verified preimage is detached.
+        os.link(prepared, path, follow_symlinks=False)
+        prepared_stat = prepared.lstat()
+        current_stat = path.lstat()
+        if (
+            not stat.S_ISREG(current_stat.st_mode)
+            or current_stat.st_dev != prepared_stat.st_dev
+            or current_stat.st_ino != prepared_stat.st_ino
+            or not hmac.compare_digest(_sha256(path), payload_sha256)
+            or not hmac.compare_digest(_sha256(displaced), expected_sha256)
+        ):
+            raise RuntimeProblem("quickstart target changed during final CAS")
+
+        displaced.unlink()
+        detached = False
+        return payload_sha256
+    except (OSError, RuntimeProblem) as exc:
+        # Never restore with rename/replace: either operation could overwrite a
+        # concurrent writer.  A no-overwrite link restores the detached entry
+        # only when the original name is still free.  Otherwise the detached
+        # entry remains beside it as explicit recovery evidence.
+        if detached and _path_entry_exists(displaced) and not _path_entry_exists(path):
+            try:
+                os.link(displaced, path, follow_symlinks=False)
+                displaced.unlink()
+                detached = False
+            except OSError:
+                pass
+        raise RuntimeProblem(
+            "quickstart final compare-and-swap detected a concurrent change"
+        ) from exc
+    finally:
+        try:
+            prepared.unlink()
+        except FileNotFoundError:
+            pass
+        # If publication succeeded and a later verification failed, keep both
+        # the visible entry and detached preimage.  Removing either could erase
+        # a concurrent writer's bytes; the partial receipt directs a recheck.
+
+
+def _quickstart_cas_json(
+    path: Path,
+    value: dict[str, Any],
+    expected_sha256: str,
+    *,
+    mode: int = 0o600,
+) -> str:
+    payload = (json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode(
+        "utf-8"
+    )
+    return _quickstart_cas_bytes(
+        path, payload, expected_sha256, mode=mode
+    )
+
+
+def _quickstart_cas_bytes_at(
+    directory_fd: int,
+    name: str,
+    payload: bytes,
+    expected_sha256: str,
+    *,
+    mode: int,
+) -> str:
+    """Replace one known entry without ever resolving its parent by pathname."""
+
+    if not name or "/" in name or name in {".", ".."}:
+        raise RuntimeProblem("quickstart received an unsafe managed file name")
+    if not isinstance(expected_sha256, str) or not re.fullmatch(
+        r"[0-9a-f]{64}", expected_sha256
+    ):
+        raise RuntimeProblem("quickstart CAS requires an exact preimage digest")
+    token = secrets.token_hex(12)
+    prepared = f".{name}.acgm-prepared-{token}"
+    displaced = f".{name}.acgm-preimage-{token}"
+    payload_sha256 = hashlib.sha256(payload).hexdigest()
+    descriptor = os.open(
+        prepared,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+        mode,
+        dir_fd=directory_fd,
+    )
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+            os.fchmod(handle.fileno(), mode)
+    except Exception:
+        try:
+            os.unlink(prepared, dir_fd=directory_fd)
+        except OSError:
+            pass
+        raise
+
+    detached = False
+    try:
+        os.rename(
+            name,
+            displaced,
+            src_dir_fd=directory_fd,
+            dst_dir_fd=directory_fd,
+        )
+        detached = True
+        metadata = os.stat(
+            displaced, dir_fd=directory_fd, follow_symlinks=False
+        )
+        if not stat.S_ISREG(metadata.st_mode) or not hmac.compare_digest(
+            _sha256_at(directory_fd, displaced), expected_sha256
+        ):
+            raise RuntimeProblem("quickstart target changed before final CAS")
+
+        os.link(
+            prepared,
+            name,
+            src_dir_fd=directory_fd,
+            dst_dir_fd=directory_fd,
+            follow_symlinks=False,
+        )
+        prepared_stat = os.stat(
+            prepared, dir_fd=directory_fd, follow_symlinks=False
+        )
+        current_stat = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+        if (
+            not stat.S_ISREG(current_stat.st_mode)
+            or current_stat.st_dev != prepared_stat.st_dev
+            or current_stat.st_ino != prepared_stat.st_ino
+            or not hmac.compare_digest(
+                _sha256_at(directory_fd, name), payload_sha256
+            )
+            or not hmac.compare_digest(
+                _sha256_at(directory_fd, displaced), expected_sha256
+            )
+        ):
+            raise RuntimeProblem("quickstart target changed during final CAS")
+
+        os.unlink(displaced, dir_fd=directory_fd)
+        detached = False
+        return payload_sha256
+    except (OSError, RuntimeProblem) as exc:
+        if (
+            detached
+            and _entry_exists_at(directory_fd, displaced)
+            and not _entry_exists_at(directory_fd, name)
+        ):
+            try:
+                os.link(
+                    displaced,
+                    name,
+                    src_dir_fd=directory_fd,
+                    dst_dir_fd=directory_fd,
+                    follow_symlinks=False,
+                )
+                os.unlink(displaced, dir_fd=directory_fd)
+                detached = False
+            except OSError:
+                pass
+        raise RuntimeProblem(
+            "quickstart final compare-and-swap detected a concurrent change"
+        ) from exc
+    finally:
+        try:
+            os.unlink(prepared, dir_fd=directory_fd)
+        except FileNotFoundError:
+            pass
+
+
+def _quickstart_cas_json_at(
+    directory_fd: int,
+    name: str,
+    value: dict[str, Any],
+    expected_sha256: str,
+    *,
+    mode: int = 0o600,
+) -> str:
+    payload = (
+        json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    ).encode("utf-8")
+    return _quickstart_cas_bytes_at(
+        directory_fd, name, payload, expected_sha256, mode=mode
+    )
 
 
 def _sha256(path: Path) -> str:
@@ -405,10 +1110,11 @@ def _project_status(root: Path) -> dict[str, Any]:
     return result
 
 
-def _data_dir() -> Path:
+def _data_dir(*, prepare: bool = True) -> Path:
     # The explicit override is useful for tests. Installed hooks receive the
     # authoritative PLUGIN_DATA path, which is recorded locally so the standalone
-    # CLI can inspect the same ledger outside a hook process.
+    # CLI can inspect the same ledger outside a hook process. Read-only consumers
+    # disable preparation so inspection never repairs permissions or creates state.
     override = os.environ.get("ACGM_CODEX_DATA_DIR")
     if override:
         return Path(override).expanduser().resolve()
@@ -416,25 +1122,26 @@ def _data_dir() -> Path:
     locator = Path.home() / ".codex" / "acgm-codex" / "data-location.json"
     if plugin_data:
         path = Path(plugin_data).expanduser().resolve()
-        try:
-            locator.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-            os.chmod(locator.parent, 0o700)
-            expected = {"schema": DATA_LOCATION_SCHEMA, "path": str(path)}
-            current: dict[str, Any] = {}
-            locator_is_symlink = locator.is_symlink()
-            if locator.exists() and not locator_is_symlink:
-                try:
-                    current = _safe_read_json(locator)
-                except RuntimeProblem:
-                    current = {}
-            if current != expected or locator_is_symlink:
-                _atomic_json(locator, expected, mode=0o600)
-            else:
-                os.chmod(locator, 0o600)
-        except OSError:
-            # The Hook can still use its official data path. A later standalone
-            # doctor will remain unhealthy until the locator can be written.
-            pass
+        if prepare:
+            try:
+                locator.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+                os.chmod(locator.parent, 0o700)
+                expected = {"schema": DATA_LOCATION_SCHEMA, "path": str(path)}
+                current: dict[str, Any] = {}
+                locator_is_symlink = locator.is_symlink()
+                if locator.exists() and not locator_is_symlink:
+                    try:
+                        current = _safe_read_json(locator)
+                    except RuntimeProblem:
+                        current = {}
+                if current != expected or locator_is_symlink:
+                    _atomic_json(locator, expected, mode=0o600)
+                else:
+                    os.chmod(locator, 0o600)
+            except OSError:
+                # The Hook can still use its official data path. A later standalone
+                # doctor will remain unhealthy until the locator can be written.
+                pass
         return path
     if locator.exists() or locator.is_symlink():
         if locator.is_symlink():
@@ -443,8 +1150,9 @@ def _data_dir() -> Path:
         raw = value.get("path")
         if value.get("schema") != DATA_LOCATION_SCHEMA or not isinstance(raw, str):
             raise RuntimeProblem("the plugin data locator is invalid")
-        os.chmod(locator.parent, 0o700)
-        os.chmod(locator, 0o600)
+        if prepare:
+            os.chmod(locator.parent, 0o700)
+            os.chmod(locator, 0o600)
         return Path(raw).expanduser().resolve()
     return Path.home() / ".codex" / "plugins" / "data" / "acgm-codex"
 
@@ -456,6 +1164,16 @@ def _ensure_data_dir() -> Path:
     path.mkdir(parents=True, exist_ok=True, mode=0o700)
     os.chmod(path, 0o700)
     return path
+
+
+def _read_key_file(path: Path) -> bytes:
+    try:
+        key = path.read_bytes()
+    except OSError as exc:
+        raise RuntimeProblem("the activity ledger key is unreadable") from exc
+    if len(key) < 32:
+        raise RuntimeProblem("the activity ledger key is invalid")
+    return key
 
 
 def _secret_key() -> bytes:
@@ -479,13 +1197,7 @@ def _secret_key() -> bytes:
                 handle.flush()
                 os.fsync(handle.fileno())
         os.chmod(path, 0o600)
-        try:
-            key = path.read_bytes()
-        except OSError as exc:
-            raise RuntimeProblem("the activity ledger key is unreadable") from exc
-        if len(key) < 32:
-            raise RuntimeProblem("the activity ledger key is invalid")
-        return key
+        return _read_key_file(path)
     finally:
         fcntl.flock(lock_descriptor, fcntl.LOCK_UN)
         os.close(lock_descriptor)
@@ -498,8 +1210,35 @@ def _opaque(label: str, raw: Any) -> str:
     return hmac.new(_secret_key(), message, hashlib.sha256).hexdigest()[:24]
 
 
+def _read_secret_key() -> bytes:
+    directory = _data_dir(prepare=False)
+    path = directory / "hmac.key"
+    ledger = directory / "events.jsonl"
+    if not path.exists():
+        if ledger.exists() and ledger.stat().st_size > 0:
+            raise RuntimeProblem(
+                "the activity ledger key is missing; preserve the ledger and key "
+                "together or move both aside before starting a new audit epoch"
+            )
+        raise RuntimeProblem("the activity ledger key is missing")
+    return _read_key_file(path)
+
+
+def _opaque_readonly(label: str, raw: Any) -> str:
+    message = f"{label}\0{raw if raw not in (None, '') else 'none'}".encode(
+        "utf-8", "surrogatepass"
+    )
+    return hmac.new(_read_secret_key(), message, hashlib.sha256).hexdigest()[:24]
+
+
 def _ledger_path() -> Path:
     return _ensure_data_dir() / "events.jsonl"
+
+
+def _read_ledger_path() -> Path:
+    if not _supported_platform() or fcntl is None:
+        raise RuntimeProblem("the activity ledger is supported only on macOS and Linux")
+    return _data_dir(prepare=False) / "events.jsonl"
 
 
 def _event_value(
@@ -599,8 +1338,50 @@ def _append_event(
     return event
 
 
-def _read_events() -> list[dict[str, Any]]:
+def _append_first_activation_heartbeat(
+    root: Path,
+    session: Any,
+    turn: Any,
+    *,
+    category: str,
+    state: str,
+) -> Optional[dict[str, Any]]:
+    event = _event_value(
+        "hook-heartbeat",
+        root,
+        session,
+        turn,
+        category=category,
+        outcome="observed",
+        state=state,
+    )
+    activation_id = event.get("activation_id")
+    if not isinstance(activation_id, str):
+        return None
     path = _ledger_path()
+    descriptor = os.open(path, os.O_RDWR | os.O_APPEND | os.O_CREAT, 0o600)
+    try:
+        os.chmod(path, 0o600)
+        with os.fdopen(descriptor, "r+", encoding="utf-8") as handle:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            events = _read_event_stream(handle)
+            exists = any(
+                item.get("kind") == "hook-heartbeat"
+                and item.get("project_id") == event.get("project_id")
+                and item.get("version") == VERSION
+                and item.get("activation_id") == activation_id
+                for item in events
+            )
+            if not exists:
+                _append_locked(handle, event)
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        return None if exists else event
+    except Exception:
+        raise
+
+
+def _read_events() -> list[dict[str, Any]]:
+    path = _read_ledger_path()
     if not path.exists():
         return []
     descriptor = os.open(path, os.O_RDONLY)
@@ -1341,7 +2122,6 @@ def _hook_stop(root: Path, payload: dict[str, Any], status: dict[str, Any]) -> d
 
 
 def _run_hook(dispatch: str, project: Optional[str]) -> int:
-    root = _project_root(project)
     try:
         raw = sys.stdin.read()
         payload = json.loads(raw)
@@ -1349,6 +2129,7 @@ def _run_hook(dispatch: str, project: Optional[str]) -> int:
             raise ValueError("hook input must be an object")
     except (json.JSONDecodeError, ValueError):
         try:
+            root = _project_root(project)
             _append_event(
                 "runtime-error",
                 root,
@@ -1366,8 +2147,25 @@ def _run_hook(dispatch: str, project: Optional[str]) -> int:
         return 0
     try:
         payload_cwd = payload.get("cwd")
-        if project is None and isinstance(payload_cwd, str) and payload_cwd:
-            root = _project_root(payload_cwd)
+        target = (
+            payload_cwd
+            if project is None and isinstance(payload_cwd, str) and payload_cwd
+            else project
+        )
+        try:
+            root = _project_root(target)
+        except AmbiguousWorkspace:
+            official = HOOK_NAMES[dispatch]
+            text = (
+                "ACGM detected a multi-repository workspace and did not choose or "
+                "modify a project. Open the intended repository directly or pass its "
+                "exact path to `acgm-codex`."
+            )
+            result = _hook_context(official, text)
+            if dispatch not in {"session-start", "subagent-start"}:
+                result["systemMessage"] = text
+            _json_output(result)
+            return 0
         if not _supported_platform():
             raise RuntimeProblem("unsupported platform")
         status = _project_status(root)
@@ -1388,7 +2186,12 @@ def _run_hook(dispatch: str, project: Optional[str]) -> int:
             result = _hook_stop(root, payload, status)
         else:
             result = {}
-        if dispatch in {"session-start", "subagent-start", "pre-compact"}:
+        lifecycle_heartbeat = dispatch in {
+            "session-start",
+            "subagent-start",
+            "pre-compact",
+        }
+        if lifecycle_heartbeat:
             _append_event(
                 "hook-heartbeat",
                 root,
@@ -1396,6 +2199,14 @@ def _run_hook(dispatch: str, project: Optional[str]) -> int:
                 payload.get("turn_id"),
                 category=dispatch,
                 outcome="observed",
+                state=status["state"],
+            )
+        elif status["state"] == GOVERNED:
+            _append_first_activation_heartbeat(
+                root,
+                payload.get("session_id"),
+                payload.get("turn_id"),
+                category=dispatch,
                 state=status["state"],
             )
         _json_output(result)
@@ -1419,6 +2230,1501 @@ def _run_hook(dispatch: str, project: Optional[str]) -> int:
             }
         )
         return 0
+
+
+def _quickstart_worktree_digest(root: Path, status_output: str) -> str:
+    digest = hashlib.sha256()
+    digest.update(b"status\0")
+    digest.update(status_output.encode("utf-8", "surrogatepass"))
+    for label, arguments in (
+        (b"index\0", ("diff", "--cached", "--binary", "--full-index", "--no-ext-diff")),
+        (b"worktree\0", ("diff", "--binary", "--full-index", "--no-ext-diff")),
+    ):
+        result = _git_probe(root, *arguments)
+        if result.returncode != 0:
+            raise RuntimeProblem("quickstart could not fingerprint the target Git state")
+        digest.update(label)
+        digest.update(result.stdout.encode("utf-8", "surrogatepass"))
+    untracked = _git_probe(root, "ls-files", "--others", "--exclude-standard", "-z")
+    if untracked.returncode != 0:
+        raise RuntimeProblem("quickstart could not fingerprint untracked project files")
+    for raw_name in sorted(name for name in untracked.stdout.split("\0") if name):
+        relative = Path(raw_name)
+        if relative.is_absolute() or ".." in relative.parts:
+            raise RuntimeProblem("quickstart received an unsafe untracked Git path")
+        path = root / relative
+        digest.update(b"untracked\0")
+        digest.update(raw_name.encode("utf-8", "surrogatepass"))
+        digest.update(b"\0")
+        try:
+            if path.is_symlink():
+                digest.update(b"symlink\0")
+                digest.update(os.readlink(path).encode("utf-8", "surrogatepass"))
+            elif path.is_file():
+                digest.update(b"file\0")
+                digest.update(_sha256(path).encode("ascii"))
+            else:
+                digest.update(b"nonregular\0")
+        except OSError as exc:
+            raise RuntimeProblem(
+                "quickstart could not fingerprint an untracked project file"
+            ) from exc
+    return digest.hexdigest()
+
+
+def _quickstart_managed_git_path(raw_name: str) -> bool:
+    name = raw_name
+    if name == ".acgm" or name.startswith(".acgm/"):
+        return True
+    return name in {
+        "CONSTITUTION.md",
+        "AGENTS.md",
+        ".governance/scope.yml",
+        ".governance/decisions/0001-adopt-acgm-standard-v1.md",
+        ".governance/snapshots/bootstrap.md",
+    }
+
+
+def _quickstart_git_guard(root: Path) -> dict[str, str]:
+    """Fingerprint Git identity and every non-quickstart project path.
+
+    The normal plan identity includes the files quickstart is authorized to
+    create.  Those files necessarily change during apply, so the final CAS uses
+    this companion guard, which excludes only the exact managed postimage and
+    local `.acgm` runtime records.
+    """
+
+    head_result = _git_probe(root, "rev-parse", "--verify", "HEAD")
+    head = head_result.stdout.strip() if head_result.returncode == 0 else "UNBORN"
+    branch_result = _git_probe(root, "branch", "--show-current")
+    if branch_result.returncode != 0:
+        raise RuntimeProblem("quickstart could not inspect the target Git branch")
+    common_result = _git_probe(root, "rev-parse", "--git-common-dir")
+    if common_result.returncode != 0 or not common_result.stdout.strip():
+        raise RuntimeProblem("quickstart could not inspect the target Git common dir")
+
+    index = _git_probe(root, "ls-files", "--stage", "-z")
+    cached = _git_probe(root, "ls-files", "--cached", "-z")
+    untracked = _git_probe(
+        root, "ls-files", "--others", "--exclude-standard", "-z"
+    )
+    status = _git_probe(
+        root, "status", "--porcelain=v1", "-z", "--untracked-files=all"
+    )
+    if any(item.returncode != 0 for item in (index, cached, untracked, status)):
+        raise RuntimeProblem("quickstart could not fingerprint the final Git state")
+
+    digest = hashlib.sha256()
+    worktree_names: set[str] = set()
+    for record in sorted(item for item in index.stdout.split("\0") if item):
+        _, separator, name = record.partition("\t")
+        if not separator:
+            raise RuntimeProblem("quickstart received an invalid Git index record")
+        # Quickstart never changes the Git index.  Keep every staged/index
+        # record in the guard, including managed paths; only their worktree
+        # postimages are excluded below.
+        digest.update(b"index\0")
+        digest.update(record.encode("utf-8", "surrogatepass"))
+        digest.update(b"\0")
+
+    for name in cached.stdout.split("\0") + untracked.stdout.split("\0"):
+        if name and not _quickstart_managed_git_path(name):
+            worktree_names.add(name)
+    for name in sorted(worktree_names):
+        relative = Path(name)
+        if relative.is_absolute() or ".." in relative.parts:
+            raise RuntimeProblem("quickstart received an unsafe Git path")
+        path = root / relative
+        digest.update(b"worktree\0")
+        digest.update(name.encode("utf-8", "surrogatepass"))
+        digest.update(b"\0")
+        try:
+            if path.is_symlink():
+                digest.update(b"symlink\0")
+                digest.update(os.readlink(path).encode("utf-8", "surrogatepass"))
+            elif path.is_file():
+                digest.update(b"file\0")
+                digest.update(_sha256(path).encode("ascii"))
+            elif path.is_dir():
+                digest.update(b"directory\0")
+            elif path.exists():
+                digest.update(b"nonregular\0")
+            else:
+                digest.update(b"missing\0")
+        except OSError as exc:
+            raise RuntimeProblem("quickstart could not fingerprint a Git path") from exc
+
+    status_records = [item for item in status.stdout.split("\0") if item]
+    index_position = 0
+    while index_position < len(status_records):
+        record = status_records[index_position]
+        if len(record) < 3:
+            raise RuntimeProblem("quickstart received an invalid Git status record")
+        names = [record[3:]]
+        if "R" in record[:2] or "C" in record[:2]:
+            index_position += 1
+            if index_position >= len(status_records):
+                raise RuntimeProblem("quickstart received an invalid Git rename record")
+            names.append(status_records[index_position])
+        if any(not _quickstart_managed_git_path(name) for name in names):
+            digest.update(b"status\0")
+            digest.update(record.encode("utf-8", "surrogatepass"))
+            for extra in names[1:]:
+                digest.update(b"\0")
+                digest.update(extra.encode("utf-8", "surrogatepass"))
+            digest.update(b"\0")
+        index_position += 1
+
+    return {
+        "head": head,
+        "branch": branch_result.stdout.strip() or "DETACHED_OR_UNBORN",
+        "git_common_dir": common_result.stdout.strip(),
+        "nonmanaged_sha256": digest.hexdigest(),
+    }
+
+
+def _release_key(value: Any) -> Optional[tuple[int, int, int, int, int]]:
+    if not isinstance(value, str) or len(value) > 64:
+        return None
+    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:-rc\.(\d+))?", value)
+    if match is None:
+        return None
+    major, minor, patch, release_candidate = match.groups()
+    try:
+        return (
+            int(major),
+            int(minor),
+            int(patch),
+            0 if release_candidate is not None else 1,
+            int(release_candidate or 0),
+        )
+    except ValueError:
+        return None
+
+
+def _compatible_state_upgrade(source_version: Any) -> bool:
+    source_key = _release_key(source_version)
+    current_key = _release_key(VERSION)
+    return bool(
+        source_version in QUICKSTART_COMPATIBLE_STATE_VERSIONS
+        and source_key is not None
+        and current_key is not None
+        and source_key < current_key
+    )
+
+
+def _quickstart_git_identity(root: Path) -> dict[str, Any]:
+    verified = _verified_git_root(root)
+    if verified != root:
+        raise RuntimeProblem("quickstart requires an explicit Git repository root")
+    try:
+        root_metadata = root.lstat()
+    except OSError as exc:
+        raise RuntimeProblem("quickstart could not inspect the target root") from exc
+    if not stat.S_ISDIR(root_metadata.st_mode):
+        raise RuntimeProblem("quickstart target root is not a real directory")
+    head_result = _git_probe(root, "rev-parse", "--verify", "HEAD")
+    head = head_result.stdout.strip() if head_result.returncode == 0 else "UNBORN"
+    branch_result = _git_probe(root, "branch", "--show-current")
+    branch = branch_result.stdout.strip() if branch_result.returncode == 0 else ""
+    status_result = _git_probe(root, "status", "--porcelain")
+    if status_result.returncode != 0:
+        raise RuntimeProblem("quickstart could not inspect the target Git status")
+    common_result = _git_probe(root, "rev-parse", "--git-common-dir")
+    common = common_result.stdout.strip() if common_result.returncode == 0 else "unknown"
+    return {
+        "root": str(root),
+        "root_device": root_metadata.st_dev,
+        "root_inode": root_metadata.st_ino,
+        "head": head,
+        "branch": branch or "DETACHED_OR_UNBORN",
+        "dirty": bool(status_result.stdout),
+        "worktree_sha256": _quickstart_worktree_digest(root, status_result.stdout),
+        "git_common_dir": common,
+    }
+
+
+def _quickstart_directory_entry_identity(
+    root: Path, name: str
+) -> Optional[dict[str, int]]:
+    path = root / name
+    try:
+        metadata = path.lstat()
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise RuntimeProblem("quickstart could not inspect a managed directory") from exc
+    if not stat.S_ISDIR(metadata.st_mode):
+        return None
+    return {"device": metadata.st_dev, "inode": metadata.st_ino}
+
+
+def _quickstart_directory_flags() -> int:
+    return (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+
+
+def _open_quickstart_root(root: Path, identity: dict[str, Any]) -> int:
+    descriptor = os.open(root, _quickstart_directory_flags())
+    try:
+        metadata = os.fstat(descriptor)
+        if (
+            not stat.S_ISDIR(metadata.st_mode)
+            or metadata.st_dev != identity.get("root_device")
+            or metadata.st_ino != identity.get("root_inode")
+        ):
+            raise RuntimeProblem("quickstart target root changed during apply")
+        return descriptor
+    except Exception:
+        os.close(descriptor)
+        raise
+
+
+def _rename_quickstart_directory_noreplace(
+    parent_fd: int, source: str, destination: str
+) -> None:
+    """Publish a prepared directory without replacing a concurrent entry.
+
+    POSIX ``rename`` may replace an empty directory and therefore cannot uphold
+    quickstart's no-overwrite contract.  The supported platforms expose an
+    atomic no-replace variant; if the primitive is unavailable, quickstart
+    fails closed instead of falling back to a racy check-then-rename sequence.
+    """
+
+    library = ctypes.CDLL(None, use_errno=True)
+    encoded_source = os.fsencode(source)
+    encoded_destination = os.fsencode(destination)
+    if sys.platform == "darwin":
+        function = getattr(library, "renameatx_np", None)
+        flag = 0x00000004  # RENAME_EXCL from <sys/stdio.h>.
+    elif sys.platform.startswith("linux"):
+        function = getattr(library, "renameat2", None)
+        flag = 0x00000001  # RENAME_NOREPLACE from <linux/fs.h>.
+    else:
+        function = None
+        flag = 0
+    if function is None:
+        raise RuntimeProblem(
+            "quickstart requires atomic no-replace directory publication"
+        )
+    function.argtypes = [
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_uint,
+    ]
+    function.restype = ctypes.c_int
+    if (
+        function(
+            parent_fd,
+            encoded_source,
+            parent_fd,
+            encoded_destination,
+            flag,
+        )
+        == 0
+    ):
+        return
+    error_number = ctypes.get_errno()
+    if error_number in {errno.EEXIST, errno.ENOTEMPTY}:
+        raise FileExistsError(
+            error_number, os.strerror(error_number), destination
+        )
+    raise OSError(error_number, os.strerror(error_number), destination)
+
+
+def _remove_private_quickstart_directory(
+    parent_fd: int,
+    name: str,
+    expected_device: int,
+    expected_inode: int,
+) -> None:
+    """Remove only the still-empty private directory created by this process."""
+
+    try:
+        metadata = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+    except OSError:
+        return
+    if (
+        stat.S_ISDIR(metadata.st_mode)
+        and metadata.st_dev == expected_device
+        and metadata.st_ino == expected_inode
+    ):
+        try:
+            os.rmdir(name, dir_fd=parent_fd)
+        except OSError:
+            pass
+
+
+def _open_quickstart_managed_directory(
+    parent_fd: int,
+    name: str,
+    expected: Optional[dict[str, int]],
+) -> int:
+    if not name or "/" in name or name in {".", ".."}:
+        raise RuntimeProblem("quickstart received an unsafe managed directory name")
+    if expected is None:
+        private_name = f".{name}.acgm-directory-{secrets.token_hex(12)}"
+        try:
+            os.mkdir(private_name, 0o700, dir_fd=parent_fd)
+            created_entry = os.stat(
+                private_name, dir_fd=parent_fd, follow_symlinks=False
+            )
+        except OSError as exc:
+            raise RuntimeProblem(
+                "quickstart could not prepare a managed directory"
+            ) from exc
+        descriptor: Optional[int] = None
+        try:
+            descriptor = os.open(
+                private_name,
+                _quickstart_directory_flags(),
+                dir_fd=parent_fd,
+            )
+            metadata = os.fstat(descriptor)
+            if (
+                not stat.S_ISDIR(created_entry.st_mode)
+                or not stat.S_ISDIR(metadata.st_mode)
+                or metadata.st_dev != created_entry.st_dev
+                or metadata.st_ino != created_entry.st_ino
+            ):
+                raise RuntimeProblem(
+                    "quickstart prepared directory changed during apply"
+                )
+            os.fchmod(descriptor, 0o755)
+            _rename_quickstart_directory_noreplace(
+                parent_fd, private_name, name
+            )
+            _verify_quickstart_directory_entry(parent_fd, name, descriptor)
+            return descriptor
+        except Exception:
+            if descriptor is not None:
+                os.close(descriptor)
+            _remove_private_quickstart_directory(
+                parent_fd,
+                private_name,
+                created_entry.st_dev,
+                created_entry.st_ino,
+            )
+            raise
+
+    try:
+        descriptor = os.open(name, _quickstart_directory_flags(), dir_fd=parent_fd)
+    except OSError as exc:
+        raise RuntimeProblem(
+            "quickstart managed directory changed during apply"
+        ) from exc
+    try:
+        metadata = os.fstat(descriptor)
+        if (
+            not stat.S_ISDIR(metadata.st_mode)
+            or not isinstance(expected, dict)
+            or metadata.st_dev != expected.get("device")
+            or metadata.st_ino != expected.get("inode")
+        ):
+            raise RuntimeProblem(
+                "quickstart managed directory changed during apply"
+            )
+        return descriptor
+    except Exception:
+        os.close(descriptor)
+        raise
+
+
+def _verify_quickstart_directory_entry(
+    parent_fd: int, name: str, descriptor: int
+) -> None:
+    try:
+        entry = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+        opened = os.fstat(descriptor)
+    except OSError as exc:
+        raise RuntimeProblem(
+            "quickstart managed directory changed during apply"
+        ) from exc
+    if (
+        not stat.S_ISDIR(entry.st_mode)
+        or entry.st_dev != opened.st_dev
+        or entry.st_ino != opened.st_ino
+    ):
+        raise RuntimeProblem("quickstart managed directory changed during apply")
+
+
+def _verify_quickstart_root(root: Path, descriptor: int) -> None:
+    try:
+        entry = root.lstat()
+        opened = os.fstat(descriptor)
+    except OSError as exc:
+        raise RuntimeProblem("quickstart target root changed during apply") from exc
+    if (
+        not stat.S_ISDIR(entry.st_mode)
+        or entry.st_dev != opened.st_dev
+        or entry.st_ino != opened.st_ino
+    ):
+        raise RuntimeProblem("quickstart target root changed during apply")
+
+
+def _standard_snapshot(identity: dict[str, Any]) -> str:
+    cleanliness = "dirty" if identity["dirty"] else "clean"
+    return (
+        "# ACGM quickstart snapshot\n\n"
+        "Current verified facts at plan time:\n\n"
+        f"- Preset: `{QUICKSTART_PRESET}`\n"
+        f"- Git HEAD: `{identity['head']}`\n"
+        f"- Branch state: `{identity['branch']}`\n"
+        f"- Working tree: `{cleanliness}`\n\n"
+        "The next safe action is automatic local activation followed by the one-time "
+        "Codex Hook trust boundary when the platform presents it.\n"
+    )
+
+
+def _quickstart_asset_plan(
+    root: Path,
+    name: str,
+    content: str,
+    *,
+    replace_known: Optional[str] = None,
+    preserve_known: Optional[str] = None,
+    exact_existing_or_conflict: bool = False,
+) -> dict[str, Any]:
+    path = root / name
+    parent = root
+    for part in Path(name).parts[:-1]:
+        parent = parent / part
+        if parent.is_symlink():
+            return {
+                "path": name,
+                "action": "conflict",
+                "reason": "parent-is-symlink",
+            }
+        if parent.exists() and not parent.is_dir():
+            return {
+                "path": name,
+                "action": "conflict",
+                "reason": "parent-is-not-a-directory",
+            }
+    if path.is_symlink():
+        return {"path": name, "action": "conflict", "reason": "symlink"}
+    if path.exists() and not path.is_file():
+        return {"path": name, "action": "conflict", "reason": "not-a-regular-file"}
+    if path.is_file():
+        try:
+            current = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError):
+            return {"path": name, "action": "conflict", "reason": "unreadable"}
+        if replace_known is not None and current == replace_known:
+            return {
+                "path": name,
+                "action": "replace-known-placeholder",
+                "before_sha256": _sha256(path),
+                "after_sha256": hashlib.sha256(content.encode("utf-8")).hexdigest(),
+                "content": content,
+            }
+        if preserve_known is not None and current == preserve_known:
+            digest = _sha256(path)
+            return {
+                "path": name,
+                "action": "preserve",
+                "before_sha256": digest,
+                "after_sha256": digest,
+            }
+        if exact_existing_or_conflict:
+            if current == content:
+                digest = _sha256(path)
+                return {
+                    "path": name,
+                    "action": "preserve",
+                    "before_sha256": digest,
+                    "after_sha256": digest,
+                }
+            return {
+                "path": name,
+                "action": "conflict",
+                "reason": "reserved-path-content-conflict",
+                "before_sha256": _sha256(path),
+            }
+        if len(current.strip()) < 20 or PLACEHOLDER_RE.search(current):
+            return {
+                "path": name,
+                "action": "conflict",
+                "reason": "existing-content-is-incomplete",
+                "before_sha256": _sha256(path),
+            }
+        digest = _sha256(path)
+        return {
+            "path": name,
+            "action": "preserve",
+            "before_sha256": digest,
+            "after_sha256": digest,
+        }
+    encoded = content.encode("utf-8")
+    return {
+        "path": name,
+        "action": "create",
+        "before_sha256": None,
+        "after_sha256": hashlib.sha256(encoded).hexdigest(),
+        "content": content,
+    }
+
+
+def _quickstart_directory_preimage(
+    root: Path, name: str
+) -> tuple[dict[str, str], Optional[str]]:
+    directory = root / name
+    if directory.is_symlink():
+        return {}, "managed-directory-is-symlink"
+    if directory.exists() and not directory.is_dir():
+        return {}, "managed-directory-is-not-a-directory"
+    if not directory.exists():
+        return {}, None
+    baseline: dict[str, str] = {}
+    try:
+        for path in sorted(directory.rglob("*")):
+            relative = path.relative_to(directory)
+            if any(part.startswith(".") for part in relative.parts):
+                continue
+            if path.is_symlink():
+                return {}, "managed-directory-contains-symlink"
+            if path.is_dir():
+                continue
+            if not path.is_file():
+                return {}, "managed-directory-contains-nonregular-entry"
+            baseline[relative.as_posix()] = _sha256(path)
+    except OSError:
+        return {}, "managed-directory-is-unreadable"
+    return baseline, None
+
+
+def _quickstart_receipt_preimage(
+    path: Path,
+) -> tuple[Optional[str], Optional[str]]:
+    if path.is_symlink():
+        return None, "quickstart-receipt-is-symlink"
+    if path.exists() and not path.is_file():
+        return None, "quickstart-receipt-is-not-a-regular-file"
+    if not path.exists():
+        return None, None
+    try:
+        receipt = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None, "quickstart-receipt-is-unknown"
+    if not isinstance(receipt, dict) or receipt.get("schema") != QUICKSTART_RECEIPT_SCHEMA:
+        return None, "quickstart-receipt-is-unknown"
+    try:
+        return _sha256(path), None
+    except OSError:
+        return None, "quickstart-receipt-is-unreadable"
+
+
+def _quickstart_plan(project: str, preset: str = QUICKSTART_PRESET) -> dict[str, Any]:
+    if not project:
+        raise RuntimeProblem("quickstart requires an explicit project path")
+    if preset != QUICKSTART_PRESET:
+        raise RuntimeProblem(f"unknown quickstart preset: {preset}")
+    explicit = Path(project).expanduser()
+    if not explicit.exists() or not explicit.is_dir():
+        raise RuntimeProblem("quickstart requires an existing project directory")
+    explicit = explicit.resolve()
+    root = _project_root(str(explicit))
+    if root != explicit:
+        raise RuntimeProblem(
+            "quickstart requires the exact Git repository root, not a parent workspace "
+            "or repository subdirectory"
+        )
+    identity = _quickstart_git_identity(root)
+    git_guard = _quickstart_git_guard(root)
+    managed_directory_entries = {
+        name: _quickstart_directory_entry_identity(root, name)
+        for name in QUICKSTART_MANAGED_DIRECTORIES
+    }
+    conflicts: list[dict[str, str]] = []
+    local_state = root / ".acgm"
+    if local_state.is_symlink() or (local_state.exists() and not local_state.is_dir()):
+        conflicts.append({"path": ".acgm", "reason": "unsafe-local-state-path"})
+    state_path = _state_path(root)
+    unsafe_state = state_path.is_symlink() or (
+        state_path.exists() and not state_path.is_file()
+    )
+    if unsafe_state:
+        conflicts.append(
+            {"path": ".acgm/codex.json", "reason": "unsafe-adapter-state-path"}
+        )
+        status: dict[str, Any] = {"state": BROKEN}
+        state: dict[str, Any] = {}
+        state_sha256: Optional[str] = None
+    else:
+        state_sha256 = _sha256(state_path) if state_path.is_file() else None
+        try:
+            state = _safe_read_json(state_path) if state_path.is_file() else {}
+        except RuntimeProblem:
+            state = {}
+        status = _project_status(root)
+    state_drift = list(status.get("drift", []))
+    source_state_version = state.get("version")
+    version_only_upgrade = (
+        status["state"] == DRIFTED
+        and state_drift == ["adapter-version:changed"]
+        and _compatible_state_upgrade(source_state_version)
+    )
+    if status["state"] in {DRIFTED, BROKEN} and not version_only_upgrade:
+        conflicts.append(
+            {
+                "path": ".acgm/codex.json",
+                "reason": (
+                    "adapter-version-not-compatible"
+                    if state_drift == ["adapter-version:changed"]
+                    else "active-governance-needs-repair"
+                ),
+            }
+        )
+    assets = [
+        _quickstart_asset_plan(
+            root,
+            ".acgm/.gitignore",
+            "*\n!.gitignore\n",
+            preserve_known="*\n!.gitignore\n",
+        ),
+        _quickstart_asset_plan(
+            root,
+            "CONSTITUTION.md",
+            STANDARD_CONSTITUTION,
+            replace_known=CONSTITUTION_TEMPLATE,
+        ),
+        _quickstart_asset_plan(root, "AGENTS.md", AGENTS_TEMPLATE),
+        _quickstart_asset_plan(
+            root,
+            ".governance/scope.yml",
+            STANDARD_SCOPE,
+            replace_known=SCOPE_TEMPLATE,
+        ),
+        _quickstart_asset_plan(
+            root,
+            ".governance/decisions/0001-adopt-acgm-standard-v1.md",
+            STANDARD_DECISION,
+            exact_existing_or_conflict=True,
+        ),
+        _quickstart_asset_plan(
+            root,
+            ".governance/snapshots/bootstrap.md",
+            _standard_snapshot(identity),
+        ),
+    ]
+    directory_preimages: dict[str, dict[str, str]] = {}
+    for name in REQUIRED_DIRS:
+        baseline, reason = _quickstart_directory_preimage(root, name)
+        directory_preimages[name] = baseline
+        if reason:
+            conflicts.append({"path": name, "reason": reason})
+    conflicts.extend(
+        {"path": str(asset["path"]), "reason": str(asset["reason"])}
+        for asset in assets
+        if asset["action"] == "conflict"
+    )
+    directory_postimages = {
+        name: dict(baseline) for name, baseline in directory_preimages.items()
+    }
+    for asset in assets:
+        asset_name = str(asset["path"])
+        for directory_name, baseline in directory_postimages.items():
+            prefix = directory_name + "/"
+            if asset_name.startswith(prefix) and asset.get("after_sha256"):
+                baseline[asset_name[len(prefix) :]] = str(asset["after_sha256"])
+    receipt_path = _quickstart_receipt_path(root)
+    if local_state.is_symlink() or (local_state.exists() and not local_state.is_dir()):
+        receipt_sha256, receipt_reason = None, "unsafe-local-state-path"
+    else:
+        receipt_sha256, receipt_reason = _quickstart_receipt_preimage(receipt_path)
+    if receipt_reason:
+        conflicts.append({"path": ".acgm/quickstart.json", "reason": receipt_reason})
+    asset_by_path = {str(asset["path"]): asset for asset in assets}
+    expected_baseline = {
+        "files": {
+            name: asset_by_path[name].get("after_sha256") for name in REQUIRED_FILES
+        },
+        "directories": directory_postimages,
+    }
+    baseline_mutation = any(
+        asset.get("action") in {"create", "replace-known-placeholder"}
+        and (
+            str(asset.get("path")) in REQUIRED_FILES
+            or any(
+                str(asset.get("path")).startswith(directory + "/")
+                for directory in REQUIRED_DIRS
+            )
+        )
+        for asset in assets
+    )
+    planned_active_rebaseline = status["state"] == GOVERNED and baseline_mutation
+    planned_preset_adoption = status["state"] == GOVERNED and (
+        state.get("preset") != preset or state.get("provisioned_by") != "quickstart"
+    )
+    if not unsafe_state:
+        if state_sha256 is None:
+            if state_path.exists() or state_path.is_symlink():
+                raise RuntimeProblem("quickstart adapter state changed while planning")
+        elif (
+            state_path.is_symlink()
+            or not state_path.is_file()
+            or not hmac.compare_digest(_sha256(state_path), state_sha256)
+        ):
+            raise RuntimeProblem("quickstart adapter state changed while planning")
+    if receipt_reason is None:
+        current_receipt_sha256, current_receipt_reason = _quickstart_receipt_preimage(
+            receipt_path
+        )
+        if (
+            current_receipt_reason is not None
+            or current_receipt_sha256 != receipt_sha256
+        ):
+            raise RuntimeProblem("quickstart receipt changed while planning")
+    if _quickstart_git_guard(root) != git_guard:
+        raise RuntimeProblem("quickstart Git state changed while planning")
+    if {
+        name: _quickstart_directory_entry_identity(root, name)
+        for name in QUICKSTART_MANAGED_DIRECTORIES
+    } != managed_directory_entries:
+        raise RuntimeProblem("quickstart managed directories changed while planning")
+    unsigned = {
+        "schema": QUICKSTART_SCHEMA,
+        "version": VERSION,
+        "preset": preset,
+        "project": identity,
+        "project_state": status["state"],
+        "state_drift": state_drift,
+        "source_state_version": source_state_version,
+        "version_only_upgrade": version_only_upgrade,
+        "planned_active_rebaseline": planned_active_rebaseline,
+        "planned_preset_adoption": planned_preset_adoption,
+        "state_sha256": state_sha256,
+        "receipt_sha256": receipt_sha256,
+        "git_guard": git_guard,
+        "managed_directory_entries": managed_directory_entries,
+        "assets": assets,
+        "directory_preimages": directory_preimages,
+        "directory_postimages": directory_postimages,
+        "expected_baseline": expected_baseline,
+        "conflicts": conflicts,
+        "capabilities": [
+            "create_missing_versioned_governance_assets",
+            "preserve_existing_project_policy",
+            "activate_exact_project",
+            "run_local_postcondition_checks",
+        ],
+        "platform_boundary": "codex_hook_trust_may_require_one_user_confirmation",
+    }
+    canonical = json.dumps(
+        unsigned, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    plan = dict(unsigned)
+    plan["plan_digest"] = "sha256:" + hashlib.sha256(canonical).hexdigest()
+    plan["ok"] = not conflicts
+    plan["status"] = "PLAN_READY" if not conflicts else "PROJECT_ASSET_CONFLICT"
+    return plan
+
+
+def _quickstart_receipt_path(root: Path) -> Path:
+    return root / ".acgm" / "quickstart.json"
+
+
+def _write_new_text(root: Path, name: str, content: str) -> None:
+    path = root / name
+    parent = root
+    for part in Path(name).parts[:-1]:
+        parent = parent / part
+        if parent.is_symlink():
+            raise RuntimeProblem(f"quickstart parent became a symlink: {name}")
+        parent.mkdir(exist_ok=True)
+    try:
+        _write_new_bytes(path, content.encode("utf-8"), 0o644)
+    except FileExistsError as exc:
+        raise RuntimeProblem(f"quickstart plan became stale before creating {name}") from exc
+
+
+def _replace_known_text(
+    root: Path, name: str, content: str, expected_sha256: str
+) -> None:
+    path = root / name
+    if path.is_symlink() or not path.is_file():
+        raise RuntimeProblem(f"quickstart plan became stale for {name}")
+    _quickstart_cas_bytes(
+        path,
+        content.encode("utf-8"),
+        expected_sha256,
+        mode=0o644,
+    )
+
+
+def _write_new_text_at(directory_fd: int, name: str, content: str) -> None:
+    try:
+        _write_new_bytes_at(directory_fd, name, content.encode("utf-8"), 0o644)
+    except FileExistsError as exc:
+        raise RuntimeProblem(
+            f"quickstart plan became stale before creating {name}"
+        ) from exc
+
+
+def _replace_known_text_at(
+    directory_fd: int,
+    name: str,
+    content: str,
+    expected_sha256: str,
+) -> None:
+    try:
+        metadata = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+    except OSError as exc:
+        raise RuntimeProblem(f"quickstart plan became stale for {name}") from exc
+    if not stat.S_ISREG(metadata.st_mode):
+        raise RuntimeProblem(f"quickstart plan became stale for {name}")
+    _quickstart_cas_bytes_at(
+        directory_fd,
+        name,
+        content.encode("utf-8"),
+        expected_sha256,
+        mode=0o644,
+    )
+
+
+_QUICKSTART_CAS_UNSET = object()
+
+
+def _assert_quickstart_state_preimage(
+    path: Path, expected_sha256: Optional[str]
+) -> None:
+    if expected_sha256 is None:
+        if path.exists() or path.is_symlink():
+            raise RuntimeProblem("quickstart adapter state changed during apply")
+        return
+    if (
+        path.is_symlink()
+        or not path.is_file()
+        or not hmac.compare_digest(_sha256(path), expected_sha256)
+    ):
+        raise RuntimeProblem("quickstart adapter state changed during apply")
+
+
+def _assert_quickstart_state_preimage_at(
+    directory_fd: int, expected_sha256: Optional[str]
+) -> None:
+    name = "codex.json"
+    if expected_sha256 is None:
+        if _entry_exists_at(directory_fd, name):
+            raise RuntimeProblem("quickstart adapter state changed during apply")
+        return
+    try:
+        metadata = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+    except OSError as exc:
+        raise RuntimeProblem("quickstart adapter state changed during apply") from exc
+    if not stat.S_ISREG(metadata.st_mode) or not hmac.compare_digest(
+        _sha256_at(directory_fd, name), expected_sha256
+    ):
+        raise RuntimeProblem("quickstart adapter state changed during apply")
+
+
+def _write_quickstart_receipt_cas(
+    path: Path, value: dict[str, Any], expected_sha256: Optional[str]
+) -> str:
+    if expected_sha256 is None:
+        if path.exists() or path.is_symlink():
+            raise RuntimeProblem("quickstart receipt changed during apply")
+        try:
+            published_sha256 = _write_new_json(path, value)
+        except FileExistsError as exc:
+            raise RuntimeProblem("quickstart receipt changed during apply") from exc
+    else:
+        if (
+            path.is_symlink()
+            or not path.is_file()
+            or not hmac.compare_digest(_sha256(path), expected_sha256)
+        ):
+            raise RuntimeProblem("quickstart receipt changed during apply")
+        published_sha256 = _quickstart_cas_json(path, value, expected_sha256)
+    if (
+        path.is_symlink()
+        or not path.is_file()
+        or not hmac.compare_digest(_sha256(path), published_sha256)
+    ):
+        raise RuntimeProblem("quickstart could not verify its receipt")
+    return published_sha256
+
+
+def _write_quickstart_receipt_cas_at(
+    directory_fd: int,
+    value: dict[str, Any],
+    expected_sha256: Optional[str],
+) -> str:
+    name = "quickstart.json"
+    if expected_sha256 is None:
+        if _entry_exists_at(directory_fd, name):
+            raise RuntimeProblem("quickstart receipt changed during apply")
+        try:
+            published_sha256 = _write_new_json_at(directory_fd, name, value)
+        except FileExistsError as exc:
+            raise RuntimeProblem("quickstart receipt changed during apply") from exc
+    else:
+        try:
+            metadata = os.stat(
+                name, dir_fd=directory_fd, follow_symlinks=False
+            )
+        except OSError as exc:
+            raise RuntimeProblem("quickstart receipt changed during apply") from exc
+        if not stat.S_ISREG(metadata.st_mode) or not hmac.compare_digest(
+            _sha256_at(directory_fd, name), expected_sha256
+        ):
+            raise RuntimeProblem("quickstart receipt changed during apply")
+        published_sha256 = _quickstart_cas_json_at(
+            directory_fd, name, value, expected_sha256
+        )
+    try:
+        metadata = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+    except OSError as exc:
+        raise RuntimeProblem("quickstart could not verify its receipt") from exc
+    if not stat.S_ISREG(metadata.st_mode) or not hmac.compare_digest(
+        _sha256_at(directory_fd, name), published_sha256
+    ):
+        raise RuntimeProblem("quickstart could not verify its receipt")
+    return published_sha256
+
+
+def _quickstart_health_result(
+    doctor: dict[str, Any],
+) -> tuple[str, bool, list[str]]:
+    if doctor["healthy"]:
+        return "COMPLETE", True, []
+    if doctor["project_state"] != GOVERNED:
+        return (
+            "NOT_READY",
+            False,
+            ["Repair project governance, then rerun quickstart status."],
+        )
+    if doctor["hook"]["runtime_error_after_last_heartbeat"]:
+        return (
+            "HOOK_RUNTIME_REPAIR_REQUIRED",
+            False,
+            ["Run `acgm-codex doctor --strict` and repair the reported Hook runtime error."],
+        )
+    if not doctor["installed"] or not doctor["platform_supported"]:
+        return (
+            "LOCAL_RUNTIME_REPAIR_REQUIRED",
+            False,
+            ["Repair the local ACGM installation or use a supported platform."],
+        )
+    if not doctor["ledger"]["available"] or not doctor["ledger"]["mode_0600"]:
+        return (
+            "LOCAL_RUNTIME_REPAIR_REQUIRED",
+            False,
+            ["Run `acgm-codex doctor --strict` and repair the local activity ledger."],
+        )
+    return (
+        "AWAITING_PLATFORM_HOOK_ACCEPTANCE",
+        True,
+        [
+            "Trust the current ACGM definition once if Codex presents /hooks, then "
+            "continue normal work; the next observed Hook can complete verification."
+        ],
+    )
+
+
+def _activate_project(
+    root: Path,
+    *,
+    preset: Optional[str] = None,
+    reuse_active: bool = False,
+    allow_version_only_upgrade: bool = False,
+    allow_planned_rebaseline: bool = False,
+    adopt_preset: bool = False,
+    expected_state_sha256: Any = _QUICKSTART_CAS_UNSET,
+    expected_baseline: Optional[dict[str, Any]] = None,
+    verified_baseline: Optional[dict[str, Any]] = None,
+    activation_guard: Optional[Callable[[], dict[str, Any]]] = None,
+    state_directory_fd: Optional[int] = None,
+) -> tuple[dict[str, Any], bool]:
+    state_path = _state_path(root)
+    if expected_state_sha256 is not _QUICKSTART_CAS_UNSET:
+        if state_directory_fd is None:
+            _assert_quickstart_state_preimage(state_path, expected_state_sha256)
+        else:
+            _assert_quickstart_state_preimage_at(
+                state_directory_fd, expected_state_sha256
+            )
+    baseline = (
+        verified_baseline
+        if verified_baseline is not None
+        else _component_baseline(root)
+    )
+    if expected_baseline is not None and baseline != expected_baseline:
+        raise RuntimeProblem("quickstart governance postimage changed before activation")
+    target_baseline = expected_baseline if expected_baseline is not None else baseline
+    state_exists = (
+        state_path.exists()
+        if state_directory_fd is None
+        else _entry_exists_at(state_directory_fd, "codex.json")
+    )
+    if state_exists:
+        existing = (
+            _safe_read_json(state_path)
+            if state_directory_fd is None
+            else _safe_read_json_at(state_directory_fd, "codex.json")
+        )
+        if existing.get("schema") != STATE_SCHEMA:
+            raise RuntimeProblem("adapter state schema is not recognized")
+        if reuse_active and existing.get("active") is True:
+            activation_id = existing.get("activation_id")
+            if not isinstance(activation_id, str) or not activation_id:
+                raise RuntimeProblem("active governance has no reusable activation id")
+            version_upgrade = allow_version_only_upgrade and _compatible_state_upgrade(
+                existing.get("version")
+            )
+            already_current = (
+                existing.get("version") == VERSION
+                and existing.get("baseline") == target_baseline
+            )
+            if already_current and not adopt_preset:
+                return existing, False
+            if version_upgrade or allow_planned_rebaseline or (
+                already_current and adopt_preset
+            ):
+                state = dict(existing)
+                state.update(
+                    {
+                        "version": VERSION,
+                        "baseline": target_baseline,
+                    }
+                )
+                if version_upgrade:
+                    state["upgraded_at"] = int(time.time())
+                if allow_planned_rebaseline:
+                    state["quickstart_rebaselined_at"] = int(time.time())
+                if preset:
+                    state["preset"] = preset
+                    state["provisioned_by"] = "quickstart"
+                    if adopt_preset:
+                        state["quickstart_adopted_at"] = int(time.time())
+                if activation_guard is not None:
+                    guarded_baseline = activation_guard()
+                    if (
+                        expected_baseline is not None
+                        and guarded_baseline != expected_baseline
+                    ):
+                        raise RuntimeProblem(
+                            "quickstart governance postimage changed before activation"
+                        )
+                if expected_state_sha256 is not _QUICKSTART_CAS_UNSET:
+                    if state_directory_fd is None:
+                        _assert_quickstart_state_preimage(
+                            state_path, expected_state_sha256
+                        )
+                    else:
+                        _assert_quickstart_state_preimage_at(
+                            state_directory_fd, expected_state_sha256
+                        )
+                    if not isinstance(expected_state_sha256, str):
+                        raise RuntimeProblem(
+                            "quickstart adapter state has no replaceable preimage"
+                        )
+                    if state_directory_fd is None:
+                        _quickstart_cas_json(
+                            state_path, state, expected_state_sha256
+                        )
+                    else:
+                        _quickstart_cas_json_at(
+                            state_directory_fd,
+                            "codex.json",
+                            state,
+                            expected_state_sha256,
+                        )
+                else:
+                    _atomic_json(state_path, state)
+                current_state = (
+                    _safe_read_json(state_path)
+                    if state_directory_fd is None
+                    else _safe_read_json_at(state_directory_fd, "codex.json")
+                )
+                if current_state != state:
+                    raise RuntimeProblem("quickstart could not verify adapter state")
+                return state, True
+            raise RuntimeProblem("active governance is drifted or broken and was not rebaselined")
+    if expected_baseline is not None and verified_baseline is not None:
+        missing, placeholders = [], []
+    else:
+        missing, placeholders = _asset_issues(root)
+    if missing or placeholders:
+        detail = []
+        if missing:
+            detail.append("missing: " + ", ".join(missing))
+        if placeholders:
+            detail.append("placeholder or too short: " + ", ".join(placeholders))
+        raise RuntimeProblem("governance assets are incomplete; " + "; ".join(detail))
+    state: dict[str, Any] = {
+        "schema": STATE_SCHEMA,
+        "version": VERSION,
+        "active": True,
+        "platform": "codex",
+        "activated_at": int(time.time()),
+        "activation_id": secrets.token_hex(12),
+        "baseline": target_baseline,
+    }
+    if preset:
+        state["preset"] = preset
+        state["provisioned_by"] = "quickstart"
+    if activation_guard is not None:
+        guarded_baseline = activation_guard()
+        if expected_baseline is not None and guarded_baseline != expected_baseline:
+            raise RuntimeProblem(
+                "quickstart governance postimage changed before activation"
+            )
+    if expected_state_sha256 is not _QUICKSTART_CAS_UNSET:
+        if state_directory_fd is None:
+            _assert_quickstart_state_preimage(state_path, expected_state_sha256)
+        else:
+            _assert_quickstart_state_preimage_at(
+                state_directory_fd, expected_state_sha256
+            )
+        if expected_state_sha256 is None:
+            try:
+                if state_directory_fd is None:
+                    _write_new_json(state_path, state)
+                else:
+                    _write_new_json_at(
+                        state_directory_fd, "codex.json", state
+                    )
+            except FileExistsError as exc:
+                raise RuntimeProblem(
+                    "quickstart adapter state changed during apply"
+                ) from exc
+        elif isinstance(expected_state_sha256, str):
+            if state_directory_fd is None:
+                _quickstart_cas_json(state_path, state, expected_state_sha256)
+            else:
+                _quickstart_cas_json_at(
+                    state_directory_fd,
+                    "codex.json",
+                    state,
+                    expected_state_sha256,
+                )
+        else:
+            raise RuntimeProblem(
+                "quickstart adapter state has no replaceable preimage"
+            )
+    else:
+        _atomic_json(state_path, state)
+    current_state = (
+        _safe_read_json(state_path)
+        if state_directory_fd is None
+        else _safe_read_json_at(state_directory_fd, "codex.json")
+    )
+    if current_state != state:
+        raise RuntimeProblem("quickstart could not verify adapter state")
+    return state, True
+
+
+def _apply_quickstart(
+    project: str,
+    *,
+    preset: str = QUICKSTART_PRESET,
+    authorized: bool,
+    expected_digest: Optional[str] = None,
+) -> dict[str, Any]:
+    plan = _quickstart_plan(project, preset)
+    result: dict[str, Any] = {
+        "schema": QUICKSTART_RECEIPT_SCHEMA,
+        "ok": False,
+        "complete": False,
+        "partial": False,
+        "authorized": authorized,
+        "status": plan["status"],
+        "plan_digest": plan["plan_digest"],
+        "preset": preset,
+        "project": plan["project"],
+        "completed_steps": [],
+        "claims": {
+            "project_assets_verified": False,
+            "project_activated": False,
+            "automatic_hook_observed": False,
+        },
+    }
+    if not plan["ok"]:
+        result["conflicts"] = plan["conflicts"]
+        return result
+    if not authorized:
+        result["status"] = "AUTHORIZATION_REQUIRED"
+        return result
+    if not expected_digest:
+        result["status"] = "PLAN_DIGEST_REQUIRED"
+        return result
+    if expected_digest != plan["plan_digest"]:
+        result["status"] = "PLAN_STALE"
+        return result
+    root = Path(str(plan["project"]["root"]))
+    receipt = dict(result)
+    receipt["status"] = "APPLYING"
+    receipt_sha256 = plan["receipt_sha256"]
+    root_fd: Optional[int] = None
+    acgm_fd: Optional[int] = None
+    governance_fd: Optional[int] = None
+    decisions_fd: Optional[int] = None
+    snapshots_fd: Optional[int] = None
+    try:
+        root_fd = _open_quickstart_root(root, plan["project"])
+        directory_entries = plan["managed_directory_entries"]
+        acgm_fd = _open_quickstart_managed_directory(
+            root_fd, ".acgm", directory_entries[".acgm"]
+        )
+        receipt_sha256 = _write_quickstart_receipt_cas_at(
+            acgm_fd, receipt, receipt_sha256
+        )
+        governance_fd = _open_quickstart_managed_directory(
+            root_fd, ".governance", directory_entries[".governance"]
+        )
+        decisions_fd = _open_quickstart_managed_directory(
+            governance_fd,
+            "decisions",
+            directory_entries[".governance/decisions"],
+        )
+        snapshots_fd = _open_quickstart_managed_directory(
+            governance_fd,
+            "snapshots",
+            directory_entries[".governance/snapshots"],
+        )
+
+        asset_locations = {
+            ".acgm/.gitignore": (acgm_fd, ".gitignore"),
+            "CONSTITUTION.md": (root_fd, "CONSTITUTION.md"),
+            "AGENTS.md": (root_fd, "AGENTS.md"),
+            ".governance/scope.yml": (governance_fd, "scope.yml"),
+            ".governance/decisions/0001-adopt-acgm-standard-v1.md": (
+                decisions_fd,
+                "0001-adopt-acgm-standard-v1.md",
+            ),
+            ".governance/snapshots/bootstrap.md": (
+                snapshots_fd,
+                "bootstrap.md",
+            ),
+        }
+
+        def activation_guard() -> dict[str, Any]:
+            """Revalidate every cross-file activation precondition by dirfd."""
+
+            _verify_quickstart_asset_postimages_at(
+                plan["assets"], asset_locations
+            )
+            _verify_quickstart_root(root, root_fd)
+            _verify_quickstart_directory_entry(root_fd, ".acgm", acgm_fd)
+            _verify_quickstart_directory_entry(
+                root_fd, ".governance", governance_fd
+            )
+            _verify_quickstart_directory_entry(
+                governance_fd, "decisions", decisions_fd
+            )
+            _verify_quickstart_directory_entry(
+                governance_fd, "snapshots", snapshots_fd
+            )
+            current_baseline = _quickstart_component_baseline_at(
+                root_fd,
+                governance_fd,
+                decisions_fd,
+                snapshots_fd,
+            )
+            if current_baseline != plan["expected_baseline"]:
+                raise RuntimeProblem(
+                    "quickstart governance postimage changed before activation"
+                )
+            if _quickstart_git_guard(root) != plan["git_guard"]:
+                raise RuntimeProblem(
+                    "quickstart target Git identity or state changed during apply"
+                )
+            return current_baseline
+
+        for asset in plan["assets"]:
+            name = str(asset["path"])
+            location = asset_locations.get(name)
+            if location is None:
+                raise RuntimeProblem("quickstart plan contains an unknown managed path")
+            directory_fd, entry_name = location
+            if asset["action"] == "create":
+                _write_new_text_at(
+                    directory_fd, entry_name, str(asset["content"])
+                )
+            elif asset["action"] == "replace-known-placeholder":
+                _replace_known_text_at(
+                    directory_fd,
+                    entry_name,
+                    str(asset["content"]),
+                    str(asset["before_sha256"]),
+                )
+            elif asset["action"] == "preserve":
+                try:
+                    metadata = os.stat(
+                        entry_name,
+                        dir_fd=directory_fd,
+                        follow_symlinks=False,
+                    )
+                except OSError as exc:
+                    raise RuntimeProblem(
+                        f"quickstart plan became stale for {name}"
+                    ) from exc
+                if not stat.S_ISREG(metadata.st_mode) or not hmac.compare_digest(
+                    _sha256_at(directory_fd, entry_name),
+                    str(asset["before_sha256"]),
+                ):
+                    raise RuntimeProblem(f"quickstart plan became stale for {name}")
+            try:
+                metadata = os.stat(
+                    entry_name,
+                    dir_fd=directory_fd,
+                    follow_symlinks=False,
+                )
+            except OSError as exc:
+                raise RuntimeProblem(f"quickstart could not verify {name}") from exc
+            if not stat.S_ISREG(metadata.st_mode) or not hmac.compare_digest(
+                _sha256_at(directory_fd, entry_name), str(asset["after_sha256"])
+            ):
+                raise RuntimeProblem(f"quickstart could not verify {name}")
+            receipt["completed_steps"].append("asset:" + name)
+            receipt_sha256 = _write_quickstart_receipt_cas_at(
+                acgm_fd, receipt, receipt_sha256
+            )
+        anchored_baseline = activation_guard()
+        receipt["claims"]["project_assets_verified"] = True
+        state, activation_changed = _activate_project(
+            root,
+            preset=preset,
+            reuse_active=True,
+            allow_version_only_upgrade=bool(plan["version_only_upgrade"]),
+            allow_planned_rebaseline=bool(plan["planned_active_rebaseline"]),
+            adopt_preset=bool(plan["planned_preset_adoption"]),
+            expected_state_sha256=plan["state_sha256"],
+            expected_baseline=plan["expected_baseline"],
+            verified_baseline=anchored_baseline,
+            activation_guard=activation_guard,
+            state_directory_fd=acgm_fd,
+        )
+        if plan["state_sha256"] is None:
+            activation_step = "activation:created"
+        elif activation_changed:
+            activation_step = "activation:updated"
+        else:
+            activation_step = "activation:preserved"
+        receipt["completed_steps"].append(activation_step)
+        receipt["activation_id"] = state["activation_id"]
+        receipt["claims"]["project_activated"] = True
+        _verify_quickstart_asset_postimages_at(plan["assets"], asset_locations)
+        if _quickstart_component_baseline_at(
+            root_fd,
+            governance_fd,
+            decisions_fd,
+            snapshots_fd,
+        ) != plan["expected_baseline"]:
+            raise RuntimeProblem("quickstart governance postimage changed after activation")
+        if _quickstart_git_guard(root) != plan["git_guard"]:
+            raise RuntimeProblem("quickstart final Git identity or state changed")
+        if _safe_read_json_at(acgm_fd, "codex.json") != state:
+            raise RuntimeProblem("quickstart final adapter state changed")
+        _verify_quickstart_root(root, root_fd)
+        _verify_quickstart_directory_entry(root_fd, ".acgm", acgm_fd)
+        _verify_quickstart_directory_entry(
+            root_fd, ".governance", governance_fd
+        )
+        _verify_quickstart_directory_entry(
+            governance_fd, "decisions", decisions_fd
+        )
+        _verify_quickstart_directory_entry(
+            governance_fd, "snapshots", snapshots_fd
+        )
+        doctor = _doctor_payload(root)
+        if doctor["project_state"] != GOVERNED:
+            raise RuntimeProblem("post-activation doctor did not report GOVERNED")
+        if _safe_read_json_at(acgm_fd, "codex.json") != state:
+            raise RuntimeProblem("quickstart adapter state changed during verification")
+        _verify_quickstart_asset_postimages_at(plan["assets"], asset_locations)
+        if _quickstart_component_baseline_at(
+            root_fd,
+            governance_fd,
+            decisions_fd,
+            snapshots_fd,
+        ) != plan["expected_baseline"]:
+            raise RuntimeProblem(
+                "quickstart governance postimage changed during verification"
+            )
+        receipt["doctor"] = doctor
+        receipt["claims"]["automatic_hook_observed"] = bool(
+            doctor["hook"]["observed_for_current_version_and_activation"]
+        )
+        health_status, health_ok, pending_actions = _quickstart_health_result(doctor)
+        receipt["ok"] = health_ok
+        receipt["complete"] = health_status == "COMPLETE"
+        receipt["status"] = health_status
+        receipt["pending_actions"] = pending_actions
+        _write_quickstart_receipt_cas_at(acgm_fd, receipt, receipt_sha256)
+        _verify_quickstart_root(root, root_fd)
+        _verify_quickstart_directory_entry(root_fd, ".acgm", acgm_fd)
+        _verify_quickstart_directory_entry(
+            root_fd, ".governance", governance_fd
+        )
+        _verify_quickstart_directory_entry(
+            governance_fd, "decisions", decisions_fd
+        )
+        _verify_quickstart_directory_entry(
+            governance_fd, "snapshots", snapshots_fd
+        )
+        _verify_quickstart_asset_postimages_at(plan["assets"], asset_locations)
+        if _quickstart_component_baseline_at(
+            root_fd,
+            governance_fd,
+            decisions_fd,
+            snapshots_fd,
+        ) != plan["expected_baseline"]:
+            raise RuntimeProblem("quickstart final governance postimage changed")
+        return receipt
+    except (OSError, RuntimeProblem) as exc:
+        receipt["ok"] = False
+        receipt["complete"] = False
+        receipt["status"] = "PARTIAL_RECHECK_REQUIRED"
+        receipt["partial"] = True
+        receipt["error"] = str(exc)
+        try:
+            if acgm_fd is not None:
+                _write_quickstart_receipt_cas_at(
+                    acgm_fd, receipt, receipt_sha256
+                )
+        except (OSError, RuntimeProblem):
+            pass
+        return receipt
+    finally:
+        for descriptor in (
+            snapshots_fd,
+            decisions_fd,
+            governance_fd,
+            acgm_fd,
+            root_fd,
+        ):
+            if descriptor is not None:
+                try:
+                    os.close(descriptor)
+                except OSError:
+                    pass
+
+
+def _quickstart_status(project: str) -> dict[str, Any]:
+    root = _project_root(project)
+    receipt_path = _quickstart_receipt_path(root)
+    receipt: dict[str, Any] = {}
+    if receipt_path.is_file() and not receipt_path.is_symlink():
+        receipt = _safe_read_json(receipt_path)
+    doctor = _doctor_payload(root)
+    health_status, health_ok, pending_actions = _quickstart_health_result(doctor)
+    return {
+        "schema": QUICKSTART_RECEIPT_SCHEMA,
+        "ok": health_ok,
+        "complete": health_status == "COMPLETE",
+        "status": health_status,
+        "project": str(root),
+        "plan_digest": receipt.get("plan_digest"),
+        "pending_actions": pending_actions,
+        "doctor": doctor,
+    }
 
 
 def _cmd_init(args: argparse.Namespace) -> int:
@@ -1475,39 +3781,40 @@ def _cmd_init(args: argparse.Namespace) -> int:
 
 def _cmd_activate(args: argparse.Namespace) -> int:
     root = _project_root(_project_argument(args))
-    state_path = _state_path(root)
-    if state_path.exists():
-        try:
-            existing = _safe_read_json(state_path)
-        except RuntimeProblem as exc:
-            print(f"activation refused: {exc}", file=sys.stderr)
-            return 2
-        if existing.get("schema") != STATE_SCHEMA:
-            print("activation refused: adapter state schema is not recognized", file=sys.stderr)
-            return 2
-    missing, placeholders = _asset_issues(root)
-    if missing or placeholders:
-        print("activation refused: governance assets are incomplete", file=sys.stderr)
-        if missing:
-            print("missing: " + ", ".join(missing), file=sys.stderr)
-        if placeholders:
-            print("placeholder or too short: " + ", ".join(placeholders), file=sys.stderr)
+    try:
+        _activate_project(root)
+    except RuntimeProblem as exc:
+        print(f"activation refused: {exc}", file=sys.stderr)
         return 2
-    _atomic_json(
-        state_path,
-        {
-            "schema": STATE_SCHEMA,
-            "version": VERSION,
-            "active": True,
-            "platform": "codex",
-            "activated_at": int(time.time()),
-            "activation_id": secrets.token_hex(12),
-            "baseline": _component_baseline(root),
-        },
-    )
     print("ACGM Codex project governance is active.")
     print("Start a new Codex task, trust the plugin hooks, then run doctor --strict.")
     return 0
+
+
+def _cmd_quickstart(args: argparse.Namespace) -> int:
+    if args.quickstart_command == "plan":
+        payload = _quickstart_plan(args.project, args.preset)
+    elif args.quickstart_command == "apply":
+        payload = _apply_quickstart(
+            args.project,
+            preset=args.preset,
+            authorized=args.authorize,
+            expected_digest=args.plan_digest,
+        )
+    elif args.quickstart_command == "status":
+        payload = _quickstart_status(args.project)
+    else:
+        raise RuntimeProblem("unknown quickstart command")
+    if args.json:
+        _json_output(payload)
+    else:
+        print(f"ACGM Codex quickstart: {payload['status']}")
+        if payload.get("pending_actions"):
+            for action in payload["pending_actions"]:
+                print("next: " + str(action))
+    if payload.get("status") == "PARTIAL_RECHECK_REQUIRED":
+        return 3
+    return 0 if payload.get("ok") else 2
 
 
 def _doctor_payload(root: Path) -> dict[str, Any]:
@@ -1528,18 +3835,22 @@ def _doctor_payload(root: Path) -> dict[str, Any]:
     except (RuntimeProblem, TypeError, ValueError):
         activated_at = 0
     try:
-        project_id = _opaque("project", str(root.resolve()))
+        events = _read_events()
+        project_id = (
+            _opaque_readonly("project", str(root.resolve())) if events else None
+        )
         relevant_events = [
             event
-            for event in _read_events()
-            if event.get("project_id") == project_id
+            for event in events
+            if project_id is not None
+            and event.get("project_id") == project_id
             and event.get("version") == VERSION
             and activation_id is not None
             and event.get("activation_id") == activation_id
             and int(event.get("ts", 0)) >= activated_at
         ]
         ledger_available = True
-        ledger = _ledger_path()
+        ledger = _read_ledger_path()
         if ledger.exists():
             ledger_secure = stat.S_IMODE(ledger.stat().st_mode) == 0o600
         else:
@@ -1622,8 +3933,11 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
 
 
 def _project_events(root: Path) -> list[dict[str, Any]]:
-    project_id = _opaque("project", str(root.resolve()))
-    return [event for event in _read_events() if event.get("project_id") == project_id]
+    events = _read_events()
+    if not events:
+        return []
+    project_id = _opaque_readonly("project", str(root.resolve()))
+    return [event for event in events if event.get("project_id") == project_id]
 
 
 def _cmd_report(args: argparse.Namespace) -> int:
@@ -1947,6 +4261,39 @@ def _build_parser() -> argparse.ArgumentParser:
     activate = subparsers.add_parser("activate", help="validate and activate project governance")
     activate.add_argument("project", nargs="?", help="project directory")
 
+    quickstart = subparsers.add_parser(
+        "quickstart", help="plan, apply, or verify one-consent project governance"
+    )
+    quickstart_subparsers = quickstart.add_subparsers(
+        dest="quickstart_command", required=True
+    )
+    quickstart_plan = quickstart_subparsers.add_parser(
+        "plan", help="produce a read-only digest-bound quickstart plan"
+    )
+    quickstart_plan.add_argument("project", help="explicit Git project root")
+    quickstart_plan.add_argument("--preset", default=QUICKSTART_PRESET)
+    quickstart_plan.add_argument("--json", action="store_true")
+    quickstart_apply = quickstart_subparsers.add_parser(
+        "apply", help="apply one approved quickstart plan without overwriting policy"
+    )
+    quickstart_apply.add_argument("project", help="explicit Git project root")
+    quickstart_apply.add_argument("--preset", default=QUICKSTART_PRESET)
+    quickstart_apply.add_argument(
+        "--plan-digest",
+        help="required with --authorize; copy it from quickstart plan",
+    )
+    quickstart_apply.add_argument(
+        "--authorize",
+        action="store_true",
+        help="authorize the exact generated plan for this project and preset",
+    )
+    quickstart_apply.add_argument("--json", action="store_true")
+    quickstart_status = quickstart_subparsers.add_parser(
+        "status", help="verify local activation and automatic Hook evidence"
+    )
+    quickstart_status.add_argument("project", help="explicit Git project root")
+    quickstart_status.add_argument("--json", action="store_true")
+
     doctor = subparsers.add_parser("doctor", help="inspect install, project, hook, and ledger health")
     doctor.add_argument("project", nargs="?", help="project directory")
     doctor.add_argument("--json", action="store_true", help="emit machine-readable JSON")
@@ -2005,6 +4352,8 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             return _cmd_init(args)
         if args.command == "activate":
             return _cmd_activate(args)
+        if args.command == "quickstart":
+            return _cmd_quickstart(args)
         if args.command == "doctor":
             return _cmd_doctor(args)
         if args.command == "report":

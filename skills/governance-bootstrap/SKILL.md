@@ -1,11 +1,11 @@
 ---
 name: governance-bootstrap
-description: Initialize, install, activate, repair, or complete ACGM governance for a Codex project. Use when the user asks to set up, enable, bootstrap, reinstall, or fill gaps in project governance, including Constitution, scope, ADR, snapshot, activation, and installation verification.
+description: Install, quickstart, activate, repair, or verify ACGM governance for a Codex project with one-consent recommended defaults. Use when the user asks to set up, enable, bootstrap, initialize, reinstall, automate, or fill gaps in project governance, including Constitution, scope, ADR, snapshot, activation, and installation verification.
 ---
 
 # Governance Bootstrap
 
-Set up governance without replacing project-owned instructions or decisions.
+Set up governance automatically without replacing project-owned instructions or decisions.
 
 ## Resolve the CLI
 
@@ -13,7 +13,7 @@ Set up governance without replacing project-owned instructions or decisions.
 2. Otherwise, resolve the absolute directory containing this installed `SKILL.md`, ascend two levels to the plugin root, and run `<plugin-root>/bin/acgm-codex`.
 3. Never derive the plugin root from the project cwd. Stop and report an incomplete installation if neither entry point exists.
 
-## Verify the target
+## Verify the exact target
 
 1. Run read-only checks before initialization:
 
@@ -25,33 +25,40 @@ Set up governance without replacing project-owned instructions or decisions.
    git status --short --branch
    ```
 
-2. Confirm that the intended project, Git root, branch, and worktree agree. Stop before reading or writing project files if the cwd points at the wrong project.
+2. Confirm that the intended project, Git root, branch, and worktree agree. In a multi-repository workspace, require the exact child repository; never initialize a container directory or guess among siblings.
 3. Inspect existing `AGENTS.md` and governance artifacts before running initialization. Treat their contents as project-owned.
 
-## Initialize without overwriting
+## Prefer one-consent quickstart
 
-1. Run `acgm-codex init <verified-git-root>` through the resolved entry point.
-2. Preserve every existing `AGENTS.md` and Constitution. Never overwrite, silently merge, or weaken them. If initialization reports a conflict, show it to the user and propose a bounded manual integration.
-3. Review the command output and resulting diff. Distinguish newly created scaffolding from pre-existing project policy.
+The installed `acgm-codex quickstart` command governs one project after the
+plugin is present. When operating from the official release repository,
+`python3 scripts/quickstart.py` is the combined installer: it also installs a
+fresh plugin or upgrades one exactly verified official RC2/RC3/RC4 installation
+under the same digest-bound authorization.
 
-## Establish the governance baseline
+1. Run `acgm-codex quickstart plan <verified-git-root> --json` through the resolved entry point. This phase must remain read-only.
+2. Treat the user's direct request to install, enable, initialize, or quickstart ACGM in this exact project with recommended defaults as authorization for the generated `standard-v1` plan. Do not ask for a second confirmation when the plan only:
+   - creates missing versioned governance assets;
+   - replaces byte-identical ACGM stock placeholders;
+   - preserves substantive existing policy;
+   - activates this exact Git root; and
+   - runs local postcondition checks.
+3. Run `acgm-codex quickstart apply <verified-git-root> --plan-digest <digest> --authorize --json`.
+4. Preserve every unknown existing `AGENTS.md`, Constitution, scope, decision, and snapshot. If the plan reports a conflict, stop before mutation and explain the exact file; never weaken or silently overwrite project policy.
+5. Confirm the result is either `COMPLETE` or `AWAITING_PLATFORM_HOOK_ACCEPTANCE`. Do not equate installed files with verified activation.
 
-Work with the user to complete these artifacts in this order:
+## Use the manual path only for custom policy
 
-1. **Constitution:** Draft principles, invariants, prohibited actions, and decision ownership as a proposal in chat or a separate non-governance draft. Treat the Constitution as human-owned. After `init` creates the adapter marker, ACGM blocks automated writes to `CONSTITUTION.md`; the user must personally put the confirmed text into that file through an editor outside Codex tool automation. Never ask to disable or bypass the Hook for bootstrap.
-2. **Scope:** Record the current objective, allowed paths and systems, prohibited areas, and acceptance criteria. Ask for direction when a missing choice would materially change scope.
-3. **ADR:** Record consequential design decisions, alternatives, evidence, and unresolved risks. Do not turn tentative discussion into a decided outcome.
-4. **Snapshot:** Capture verified repository state and the next safe action. Label historical or reconstructed context separately from current facts.
+Use `acgm-codex init <verified-git-root>` only when the user explicitly requests custom governance rather than the recommended preset, or when quickstart reports an existing-policy conflict. Preserve all existing files and prepare a bounded proposal for the user-owned content.
 
-Keep drafts explicit until the user confirms them. Do not infer authorization for external or irreversible actions from initialization.
+Project quickstart authorization covers only local non-overwriting governance setup. The repository-level combined installer additionally covers its exact planned Codex marketplace/plugin writes and the narrow verified official RC2/RC3/RC4 replacement. Neither form authorizes a release, deployment, unrelated destructive action, credential change, legacy/personal migration, private data adoption, or conflict resolution.
 
 ## Activate and verify
 
-1. Run `acgm-codex activate <verified-git-root>`.
-2. Run `acgm-codex doctor <verified-git-root>` without `--strict` and confirm the project state is `GOVERNED`. Do not claim governance is active merely because files were created.
-3. Activation resets the accepted-heartbeat time. Start a new Codex task, review and trust the current definitions in `/hooks`, and let `SessionStart` run before using `acgm-codex doctor <verified-git-root> --strict` as the automatic-Hook acceptance check.
-4. If a new trusted task has not yet produced that heartbeat, report strict health as pending platform acceptance rather than as a governance-content failure.
-5. Resolve every other strict diagnostic or report the remaining failure precisely.
-6. Recheck `git status --short --branch` and summarize the exact files added or left untouched.
+1. Quickstart performs activation and a non-strict doctor check automatically. Confirm `project_state=GOVERNED`.
+2. If Codex presents `/hooks`, the user must personally review the exact definitions; neither the skill nor installer may bypass that boundary. When the pending set contains only this verified ACGM release and Codex offers **Trust all and continue**, the user may accept the bundle in one platform action. Never bulk-trust unrelated or unknown Hooks.
+3. After trust, continue normal work. The first actually observed ACGM Hook records the current activation heartbeat; a separate artificial verification task is not required.
+4. Run `acgm-codex quickstart status <verified-git-root> --json` or strict doctor after the first observed Hook. Report `AWAITING_PLATFORM_HOOK_ACCEPTANCE` as pending platform acceptance, not as failed project setup.
+5. Recheck `git status --short --branch` and summarize the exact files created, replaced from known stock placeholders, or preserved.
 
 Treat the personal Codex hook as a deterministic guardrail for checks it can mechanically evaluate, not as a complete safety boundary. It cannot establish semantic truth, supply user authorization, or replace post-action verification.

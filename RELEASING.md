@@ -11,6 +11,8 @@
 5. Exercise fresh, dry-run, explicit-authorization, idempotent, legacy,
    duplicate/conflict, command-failure/partial, source/tag/manifest, and cache
    byte-verification paths with an isolated HOME/CODEX_HOME and fake Codex CLI.
+   Include Codex-owned marketplace metadata, cache-with-Git/cache-without-Git,
+   concurrent directory publication, and late managed-file symlink cases.
 6. Install into a disposable home and verify the exact published-file allowlist,
    symlink-safe CLI replacement, marketplace/personal-source/CLI rollback after
    an injected later failure, and cache behavior. Do not describe Codex cache as
@@ -25,6 +27,9 @@
    Apply the same rule when a pre-install version key carries an explicit null
    placeholder: accept that null only when independent exact-release evidence
    supplies the version. Continue to reject a missing key or explicit conflict.
+   Also exercise the exact official RC4-to-candidate upgrade: verify the old
+   snapshot and sole installed cache, inspect the remove/add/add plan, confirm
+   only the new cache remains, and prove private plugin data is untouched.
 8. Review and trust the exact Hook definitions through `/hooks`.
 9. Complete every item in `tests/manual/CODEX_E2E.md` in a disposable repository.
 10. Search real `PLUGIN_DATA` and confirm that raw prompt, path, command, remote,

@@ -85,6 +85,7 @@ class PackageContractTests(unittest.TestCase):
 
     def test_public_marketplace_is_tag_pinned_and_policy_complete(self) -> None:
         marketplace = read_json(MARKETPLACE_PATH)
+        version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
         self.assertEqual(marketplace.get("name"), "acgm-codex")
         self.assertEqual(marketplace.get("interface", {}).get("displayName"), "ACGM for Codex")
         plugins = marketplace.get("plugins")
@@ -97,7 +98,7 @@ class PackageContractTests(unittest.TestCase):
             {
                 "source": "url",
                 "url": "https://github.com/johnrucnapier-sketch/ACGM-for-Codex.git",
-                "ref": "v0.1.0-rc.4",
+                "ref": f"v{version}",
             },
         )
         self.assertEqual(
@@ -106,22 +107,56 @@ class PackageContractTests(unittest.TestCase):
         )
         self.assertEqual(entry.get("category"), "Developer Tools")
 
-    def test_agent_install_bridge_preserves_authorization_and_task_boundaries(self) -> None:
+    def test_agent_install_bridge_defines_one_consent_quickstart_contract(self) -> None:
         agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
         install = (ROOT / "INSTALL.md").read_text(encoding="utf-8")
+        contract = agents + "\n" + install
         for required in (
             "URL",
             "explicit",
-            "scripts/preflight.py --json",
-            "--authorize-install",
+            "scripts/quickstart.py",
+            "--authorize",
+            "--plan-digest",
+            "standard-v1",
+            "digest",
             "/hooks",
-            "new Codex discovery task",
-            "second new verification task",
+            "subsequently observed",
             "Windows",
         ):
-            self.assertIn(required, agents + "\n" + install)
+            self.assertIn(required, contract)
+        self.assertNotIn("new Codex discovery task", contract)
+        self.assertNotIn("second new verification task", contract)
+        preflight = (ROOT / "scripts" / "preflight.py").read_text(encoding="utf-8")
+        self.assertIn("FIRST_TRUSTED_HOOK_AUTO_COMPLETES", preflight)
+        self.assertNotIn("SECOND_NEW_TASK_AFTER_TRUST_REQUIRED", preflight)
+        self.assertNotIn('"id": "start_verification_task"', preflight)
         architecture = (ROOT / "ARCHITECTURE.md").read_text(encoding="utf-8").lower()
         self.assertIn("windows claim requires", architecture)
+
+    def test_official_upgrade_is_narrow_and_uses_fixed_remove_add_add_plan(self) -> None:
+        preflight = (ROOT / "scripts" / "preflight.py").read_text(encoding="utf-8")
+        bootstrap = (ROOT / "scripts" / "bootstrap.py").read_text(encoding="utf-8")
+        for required in (
+            "READY_FOR_OFFICIAL_UPGRADE",
+            "KNOWN_OFFICIAL_UPGRADE_VERSIONS",
+            "official_upgrade_cache_unverified",
+            "installed_cache_version_set_mismatch",
+            "marketplace",
+            "remove",
+            "scope",
+        ):
+            self.assertIn(required, preflight + bootstrap)
+        self.assertIn("MARKETPLACE_REMOVE", bootstrap)
+        self.assertLess(
+            bootstrap.index('if current["status"] == "READY_FOR_OFFICIAL_UPGRADE"'),
+            bootstrap.index('if current["status"] == "READY_FOR_INSTALL"'),
+        )
+        self.assertIn("MARKETPLACE_REMOVED_BUT_POSTCONDITION_UNVERIFIED", bootstrap)
+        self.assertIn("INSTALL_PLAN_DIGEST_REQUIRED", bootstrap)
+        self.assertIn('"--plan-digest"', bootstrap)
+        self.assertIn("expected_plan_digest=args.plan_digest", bootstrap)
+        self.assertIn("package_filesystem_excluded_path_not_allowed", preflight)
+        self.assertNotIn("rolled back", bootstrap.lower())
 
     def test_ci_matrix_covers_supported_and_blocked_platform_contracts(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(
@@ -136,6 +171,7 @@ class PackageContractTests(unittest.TestCase):
             '"3.12"',
             "scripts/generate-package-manifest.py --check --source git",
             "tests.test_bootstrap",
+            "tests.test_quickstart",
         ):
             self.assertIn(required, workflow)
 

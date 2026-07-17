@@ -1,99 +1,211 @@
 # Codex local plugin E2E
 
-Run this checklist only in a disposable Git repository. Capture versions and
-results, but never paste secrets into a prompt or ledger fixture.
+Run this checklist only with a clean candidate source checkout and disposable Git
+repositories. Capture versions and results, but never paste secrets into a prompt
+or ledger fixture.
 
-**RC status:** this checklist defines the remaining acceptance work; it has not
-yet been recorded as passed in a clean new Codex task for `0.1.0-rc.4`.
+**Candidate status:** this checklist defines the remaining acceptance work for
+`0.2.0-rc.1`. It has not yet been recorded as passed against an installed
+candidate in a completely new Codex task.
 
-## 1. Package and install
+## 1. Package and one-consent quickstart
+
+Capture:
 
 ```bash
 codex --version
 python3 --version
 git --version
 python3 scripts/release_check.py
-python3 scripts/preflight.py --json
-python3 scripts/bootstrap.py --dry-run --json
-python3 scripts/bootstrap.py --authorize-install --json
+```
+
+Create one clean disposable target repository and use its absolute Git root:
+
+```bash
+python3 scripts/quickstart.py \
+  --project /absolute/path/to/disposable-project \
+  --dry-run --json
+python3 scripts/quickstart.py \
+  --project /absolute/path/to/disposable-project \
+  --plan-digest <digest-from-dry-run> \
+  --authorize --json
 codex plugin marketplace list --json
 codex plugin list --available --json
 ```
 
-Expected: `acgm-codex@acgm-codex` version `0.1.0-rc.4` is installed and enabled
-from the exact repository and `v0.1.0-rc.4`; bootstrap verifies its cached package
-bytes. It reports Hook trust, heartbeat, and project bootstrap as pending. Test
-legacy personal and command-failure paths only in isolated fixtures; external
-Codex state is never claimed as transactionally reversible.
+The direct request to install and enable official ACGM in this exact project
+with recommended defaults is the one authorization for this `standard-v1`
+plan. The dry run is machine verification, not a second user approval.
 
-## 2. New task and Hook trust
+Expected:
 
-1. Start a completely new Codex task in a disposable repository.
-2. Open `/hooks`.
-3. Confirm the source is the installed `acgm-codex` plugin.
-4. Read each command and matcher; trust only the reviewed current definitions.
-5. Start a second completely new verification task after trust, even if Codex
-   does not request a restart; the discovery task's `SessionStart` occurred
-   before the Hook was trusted.
+- the source is the exact candidate tag, manifest, and package inventory;
+- `acgm-codex@acgm-codex` version `0.2.0-rc.1` is installed and enabled from
+  the exact repository and `v0.2.0-rc.1`;
+- cached package bytes match the source manifest;
+- the target has the required governance assets, is activated, and doctor sees
+  it as `GOVERNED`;
+- the combined result is either `COMPLETE` or, before any trusted Hook is
+  observed, `AWAITING_PLATFORM_HOOK_ACCEPTANCE`;
+- no legacy personal install, duplicate, wrong source/ref/scope/version, or
+  private Event Ledger state is migrated automatically.
 
-Expected: no use of `--dangerously-bypass-hook-trust` is required for normal use.
+In separate disposable copies, omit `--authorize` and then supply a stale
+digest after changing Git identity or a managed-file hash. Both cases must stop
+before any project or Codex configuration write. A failed external plugin
+command may leave an explicitly reported partial external state; it must never
+be described as transactionally rolled back.
+After a successful disposable plugin install, rename the target project before
+the project apply stage and confirm the combined command returns
+`PROJECT_RECHECK_REQUIRED`, `partial=true`, and no traceback.
 
-## 3. Discovery and heartbeat
+### Verified official upgrade path
 
-Ask Codex to list the ACGM skills and run:
+In a disposable Codex profile, install the public official RC4 tag first and
+record its user scope, marketplace source/ref, sole cache directory, and private
+plugin-data metadata. Then run the RC1 combined dry-run/apply flow above.
+
+Expected:
+
+- the plan explicitly contains marketplace remove, exact `v0.2.0-rc.1`
+  marketplace add, and plugin add;
+- apply refuses a changed starting version/ref, marketplace snapshot, installed
+  cache, plan digest, or any duplicate/foreign/unknown/newer state before its
+  first mutation;
+- the final installation has only the `0.2.0-rc.1` cache directory and passes
+  exact byte verification;
+- private `PLUGIN_DATA`, Event Ledger, and HMAC key are not copied, reset, or
+  adopted by the installer;
+- an injected failure is reported as partial/recheck state, never as automatic
+  rollback.
+
+## 2. Exact-root and multi-repository safety
+
+Create an unborn or empty parent Git repository with two direct child Git
+repositories. Start a disposable Codex task at the parent and cause one normal
+Hook observation.
+
+Expected:
+
+- ACGM reports an ambiguous multi-repository workspace;
+- it writes no `.acgm`, Constitution, governance asset, or heartbeat for the
+  parent;
+- it does not tell the user to initialize the parent;
+- quickstart with the parent path refuses to guess;
+- quickstart with the explicit absolute root of one child affects only that
+  child.
+
+Repeat with only one valid direct child and confirm runtime resolution selects
+that child only when the parent contains no other entries. Add one ordinary
+untracked file and then one ignored file to separate disposable parents; both
+must stop implicit child selection and write no child heartbeat. Repeat with a
+committed parent repository and nested repositories;
+the established parent remains the project root.
+
+## 3. Hook trust and the first real heartbeat
+
+Newly installed plugins load at normal Codex task boundaries. Start the next
+normal task in the disposable governed project, open `/hooks`, verify the source
+is the installed `acgm-codex` plugin, and review every command and matcher. If
+the pending set contains only this exact verified ACGM release and the client
+offers **Trust all and continue**, accept the bundle with that one platform
+action. If any unrelated or unknown Hook is present, review it separately and
+do not bulk-trust the mixed set.
+
+This `/hooks` review flow is the platform-owned confirmation that quickstart
+cannot perform. In the clean ACGM-only case it can be one bulk action; mixed
+pending sets require separate review. Do not use
+`--dangerously-bypass-hook-trust`.
+
+Ask Codex to list the installed ACGM skills. Confirm that
+`governance-bootstrap`, `session-grounding`, `truth-first`, and
+`activity-report` are discoverable, and that `governance-bootstrap` presents
+quickstart rather than a manual file-writing ceremony.
+
+After trust, run one harmless real tool call such as a Git status inspection,
+then run:
 
 ```bash
-ACGM="${CODEX_HOME:-$HOME/.codex}/plugins/cache/acgm-codex/acgm-codex/0.1.0-rc.4/bin/acgm-codex"
-"$ACGM" version
-"$ACGM" doctor . --json
+ACGM="${CODEX_HOME:-$HOME/.codex}/plugins/cache/acgm-codex/acgm-codex/0.2.0-rc.1/bin/acgm-codex"
+"$ACGM" quickstart status /absolute/path/to/disposable-project --json
+"$ACGM" doctor /absolute/path/to/disposable-project --strict
 ```
 
-Expected: four skills are discoverable; doctor reports the installed version and
-a real `SessionStart` heartbeat. If the heartbeat is absent, installation is not
-accepted as proof that Hooks ran.
+Expected: the first actually observed ACGM Hook records the current activation
+heartbeat and both checks reach completion. A second artificial verification
+task is not required. If the heartbeat is absent, installation and local
+governance are not proof that automatic Hooks ran.
 
-## 4. Bootstrap lifecycle
+Also run strict doctor and `report --json` through the normal managed Codex
+tool sandbox after the Hook has created its ledger. Record locator, ledger, key,
+and lock mode/size/mtime before and after. Both commands must succeed without
+creating files, calling `chmod`, or opening a write-capable ledger/key lock; the
+metadata snapshot must remain unchanged.
 
-Invoke `$governance-bootstrap`. Verify that `init` does not overwrite pre-existing
-`AGENTS.md` or `CONSTITUTION.md`. Complete human-reviewed content for Constitution,
-scope, one decision, and one snapshot, then activate.
+## 4. Quickstart asset adoption and lifecycle
 
-Have Codex draft Constitution text only as a proposal. The user must write the
-confirmed text through an editor outside automated Codex tools; confirm that the
-bootstrap workflow does not ask Codex to bypass its own Constitution guard.
+Exercise these cases in separate disposable repositories:
 
-Expected transitions:
+1. Fresh project: quickstart creates the `standard-v1` Constitution, scope,
+   adoption decision, snapshot, adapter marker, activation baseline, and local
+   receipt.
+2. Existing substantive `AGENTS.md`, Constitution, scope, decision, or snapshot:
+   quickstart preserves every byte and supplies only missing assets.
+3. Byte-identical old `init` placeholders: quickstart replaces only those known
+   templates with `standard-v1` content.
+4. Change only the recorded adapter version while leaving its baseline-matched
+   assets intact: quickstart upgrades that version inside the same digest-bound
+   authorization and preserves the activation id.
+5. Unknown short/placeholder content, symlink, non-regular managed entry,
+   substantive active drift, or broken adapter state: quickstart stops before
+   replacement.
+6. Repeated quickstart against the unchanged governed project: it is idempotent
+   and does not rotate an already-valid activation id.
+7. Healthy manually activated current-version project missing only the preset
+   decision/snapshot: quickstart adopts the exact planned assets, preserves the
+   activation id, and finishes without self-induced drift.
+8. Unknown/newer adapter version or unknown existing quickstart receipt: apply
+   stops without downgrade or overwrite. Change Git identity/index, adapter
+   state, receipt, or a managed postimage between plan and apply and confirm the
+   digest/CAS guards stop automatic rebaseline.
+
+Delete a required disposable snapshot, rerun doctor, and confirm `DRIFTED`;
+restore it and explicitly repair or re-activate through the reviewed custom
+path. Add or change a non-hidden decision/snapshot file and confirm baseline
+drift. Corrupt a copied adapter config and confirm `BROKEN`, then restore it.
+
+The compatible manual path remains testable for custom policy:
 
 ```text
 INSTALLED_NOT_BOOTSTRAPPED -> PARTIALLY_GOVERNED -> GOVERNED
 ```
 
-Delete a required disposable snapshot, rerun doctor, and confirm `DRIFTED`; restore
-it and explicitly re-activate. Also add or change a non-hidden decision/snapshot
-file and confirm baseline drift. Corrupt a copied adapter config and confirm
-`BROKEN`, then restore it.
+Quickstart may move a fresh safe project directly from
+`INSTALLED_NOT_BOOTSTRAPPED` to `GOVERNED`, while its runtime-verification
+status remains `AWAITING_PLATFORM_HOOK_ACCEPTANCE` until the first real
+heartbeat.
 
-Because each activation resets the accepted-heartbeat time, start another new
-task, confirm `/hooks` still shows the trusted released definition, let
-`SessionStart` run, and then run
-`acgm-codex doctor . --strict`. Before this post-activation heartbeat, strict
-failure is expected and must not be reported as invalid governance content.
+After a valid heartbeat, inject a disposable Hook runtime error and confirm
+quickstart status returns `HOOK_RUNTIME_REPAIR_REQUIRED`. Corrupt only a copied
+local ledger fixture and confirm `LOCAL_RUNTIME_REPAIR_REQUIRED`; neither case
+may be reported as waiting for first-time Hook trust.
 
 ## 5. Constitution ownership
 
-In the disposable governed project, ask Codex to modify `CONSTITUTION.md` through
-`apply_patch` without changing Hook settings.
+In the disposable governed project, ask Codex to modify `CONSTITUTION.md`
+through `apply_patch` without changing Hook settings.
 
-Expected: `PreToolUse` denies the write and explains that the agent may draft a
-proposal but the human-owned Constitution must not be silently changed. Read-only
+Expected: `PreToolUse` denies the write and explains that the Agent may draft a
+proposal but must not silently change the human-owned Constitution. Quickstart's
+adoption of the exact user-authorized `standard-v1` bytes is the narrow
+provisioning exception; it does not authorize later automated edits. Read-only
 inspection remains available.
 
 Trigger an ordinary Codex permission request for a disposable operation.
 
-Expected: ACGM's `PermissionRequest` handler supplies no allow/deny decision.
-It writes only a sanitized `permission-boundary-observed` event with an opaque
-target when derivable; Codex's normal permission UI and authorization boundary
-remain authoritative.
+Expected: ACGM's `PermissionRequest` handler supplies no allow/deny decision. It
+writes only a sanitized `permission-boundary-observed` event with an opaque
+target when derivable; Codex's normal permission UI remains authoritative.
 
 ## 6. High-risk evidence and verification
 
@@ -102,37 +214,32 @@ recognized destructive Git operation against only that repository.
 
 Expected sequence:
 
-1. First attempt is denied.
+1. The first attempt is denied.
 2. The denial supplies an event-bound `acgm-codex gate arm --event ...
    --category ...` command. Run it in the same turn and target.
-3. That CLI command prints the result of ACGM's fixed, non-shell current-state
-   inspection and succeeds only when the subprocess itself exits zero.
-4. The retry is not described as user-authorized merely because the gate is armed.
-5. Codex's normal permission boundary still applies.
-6. `PostToolUse` opens a verification obligation.
-7. The obligation supplies `acgm-codex gate verify --event ... --category ...`.
-   Its matching fixed check closes the mechanical obligation only on exit zero;
-   inspect the output before claiming the postcondition is semantically verified.
+3. The CLI runs its fixed, non-shell current-state inspection and succeeds only
+   when that subprocess exits zero.
+4. The retry is not described as user-authorized merely because the gate is
+   armed; Codex's permission boundary still applies.
+5. `PostToolUse` opens a matching verification obligation.
+6. `acgm-codex gate verify --event ... --category ...` repeats the fixed check
+   and closes only the mechanical obligation on exit zero.
+7. Inspect the output before claiming the semantic postcondition is verified.
 
-Inspect the ledger ordering. `PreToolUse` may record only a bound request; the CLI
-records a successful check after directly observing its subprocess exit status.
 Ordinary Bash `PostToolUse.tool_response` text must never arm or close anything.
-An accepted event means only that the fixed check exited zero, not that its output
-proved the intended semantic postcondition.
-
-Also test an incorrect event/category, a fixed check that exits nonzero, a target
-aimed at another disposable repository or directory, and concurrent matching
-retries. Confirm that none can arm or close the wrong operation and exactly one
-retry can consume one arm. Test shell expansion, globbing, and a compound command;
-if recognized as high risk they must be denied but unarmable.
+Also test an incorrect event/category, a nonzero fixed check, another disposable
+target, concurrent matching retries, shell expansion, globbing, and a compound
+command. None may arm or close the wrong operation, and exactly one retry may
+consume one arm.
 
 ## 7. Bounded Stop behavior
 
-In a fresh disposable fixture, allow a recognized action but omit the postcondition.
+In a fresh disposable fixture, allow a recognized action but omit the
+postcondition.
 
-Expected: the first `Stop` asks Codex to continue and verify. If the obligation is
-still open when the continued turn stops, ACGM records it as unresolved and does
-not create an infinite loop.
+Expected: the first `Stop` asks Codex to continue and verify. If the obligation
+is still open when the continued turn stops, ACGM records it as unresolved and
+does not create an infinite loop.
 
 ## 8. Compaction and subagents
 
@@ -140,36 +247,42 @@ Trigger a manual compact and start one subagent.
 
 Expected: `PreCompact` records only a source-minimized heartbeat—no project
 snapshot, compressed context, or replacement baseline. A subsequent
-`SessionStart` re-grounds the compacted task from current project files; the
-subagent receives governance context without receiving raw ledger contents.
+`SessionStart` re-grounds from current project files; the subagent receives
+governance context without raw ledger contents.
 
 ## 9. Ledger privacy and reporting
 
-Use unique, harmless fixtures representing a path, remote URL, fake model name,
-fake token, and command text. Exercise Hooks, then locate the data directory from
-doctor and search every persistent file.
+Use unique harmless fixtures representing a path, remote URL, fake model name,
+fake token, and command text. Exercise Hooks, locate the data directory from
+doctor, and search every persistent file.
 
 Expected: none of the raw fixtures appears. Run:
 
 ```bash
-acgm-codex report --project current --limit 50 --json
+"$ACGM" report --project current --limit 50 --json
 ```
 
-Activity events are distinguishable from verified interceptions. `export-case`
-creates a new local preview only, refuses to overwrite an existing or governance
-state file, and never uploads it.
+Activity is distinguishable from a verified interception. `export-case`
+creates only a new local preview, refuses to overwrite existing or governance
+state files, and never uploads it.
 
 Confirm the standalone CLI and Hook resolve the same official `PLUGIN_DATA`
-ledger through the mode-`0600` locator. The locator may contain the absolute data
-directory path; confirm that no Event Ledger record contains the raw fixture
-paths. In a disposable copy only, remove the HMAC key while retaining a nonempty
-ledger and confirm that the runtime refuses to silently create a new audit epoch.
+ledger through the mode-`0600` locator. The locator may contain the absolute
+data-directory path; no Event Ledger record may contain the fixture paths. In a
+disposable copy only, remove the HMAC key while retaining a nonempty ledger and
+confirm that runtime refuses a silent new audit epoch.
 
-## 10. Upgrade trust and clean exit
+## 10. Upgrade trust, Windows boundary, and clean exit
 
 Change a disposable Hook definition, reinstall, and start a new task.
 
-Expected: Codex marks the changed Hook for review because its hash changed. Restore
-the released definition, reinstall, re-review, and confirm normal operation.
+Expected: Codex marks the changed definition hash for review. Restore the
+released definition, reinstall, review it once, and confirm the first real Hook
+restores completion without a second artificial task.
 
-Record the final result in `EVIDENCE.md`; do not promote failed or skipped items.
+Native Windows runtime remains `BLOCKED` for this candidate because Event
+Ledger locking still depends on POSIX `fcntl`. CI may verify a fail-closed
+contract on Windows, but that is not Windows installation or runtime E2E.
+
+Record only observed results in `EVIDENCE.md`. Do not promote failed, skipped,
+fixture-only, or source-checkout results into installed-platform claims.
