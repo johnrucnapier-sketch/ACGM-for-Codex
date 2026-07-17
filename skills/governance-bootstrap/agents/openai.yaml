@@ -1,4 +1,4 @@
 interface:
   display_name: "ACGM Governance Bootstrap"
-  short_description: "Initialize and activate project governance"
-  default_prompt: "Use $governance-bootstrap to initialize ACGM governance in this repository."
+  short_description: "One-consent governance setup and verification"
+  default_prompt: "Use $governance-bootstrap to quickstart ACGM in this repository with recommended defaults."

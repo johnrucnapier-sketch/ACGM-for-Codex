@@ -20,14 +20,19 @@ class ReleaseToolTests(unittest.TestCase):
         expected = generator.build(ROOT, "auto")
         actual = json.loads((ROOT / "PACKAGE_MANIFEST.json").read_text(encoding="utf-8"))
         self.assertEqual(actual, expected)
-        self.assertEqual(actual["version"], "0.1.0-rc.4")
+        self.assertEqual(
+            actual["version"],
+            (ROOT / "VERSION").read_text(encoding="utf-8").strip(),
+        )
         for required in (
             ".agents/plugins/marketplace.json",
             "AGENTS.md",
             "INSTALL.md",
             "scripts/preflight.py",
             "scripts/bootstrap.py",
+            "scripts/quickstart.py",
             "tests/test_bootstrap.py",
+            "tests/test_quickstart.py",
         ):
             self.assertIn(required, actual["files"])
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import stat
@@ -9,6 +10,7 @@ import tempfile
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from unittest import mock
 
 
 REPO = Path(__file__).resolve().parents[1]
@@ -33,6 +35,64 @@ class RuntimeTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.temporary.cleanup()
+
+    def make_repository(self, path: Path, *, commit: bool = True) -> Path:
+        path.mkdir(parents=True, exist_ok=True)
+        subprocess.run(
+            ["git", "init", "-q", str(path)], check=True, capture_output=True
+        )
+        if commit:
+            (path / "README.md").write_text("# Fixture repository\n", encoding="utf-8")
+            subprocess.run(
+                ["git", "-C", str(path), "add", "README.md"],
+                check=True,
+                capture_output=True,
+            )
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(path),
+                    "-c",
+                    "user.name=Fixture",
+                    "-c",
+                    "user.email=fixture@example.invalid",
+                    "commit",
+                    "-q",
+                    "-m",
+                    "fixture",
+                ],
+                check=True,
+                capture_output=True,
+            )
+        return path
+
+    def make_container_workspace(self, *names: str) -> tuple[Path, list[Path]]:
+        workspace = self.base / ("workspace-" + "-".join(names))
+        self.make_repository(workspace, commit=False)
+        repositories = [self.make_repository(workspace / name) for name in names]
+        return workspace, repositories
+
+    def load_runtime_module(self) -> object:
+        name = f"acgm_codex_runtime_test_{id(self)}"
+        specification = importlib.util.spec_from_file_location(name, RUNTIME)
+        self.assertIsNotNone(specification)
+        self.assertIsNotNone(specification.loader)
+        module = importlib.util.module_from_spec(specification)
+        specification.loader.exec_module(module)
+        return module
+
+    def write_dirfd_file(
+        self, directory_fd: int, name: str, content: str, *, mode: int = 0o600
+    ) -> None:
+        descriptor = os.open(
+            name,
+            os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
+            mode,
+            dir_fd=directory_fd,
+        )
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(content)
 
     def cli(
         self,
@@ -254,6 +314,1404 @@ class RuntimeTests(unittest.TestCase):
         doctor = json.loads(self.cli("doctor", str(self.project), "--json", check=True).stdout)
         self.assertEqual(doctor["project_state"], "INSTALLED_NOT_BOOTSTRAPPED")
         self.assertFalse(doctor["active"])
+
+    def test_quickstart_plan_is_read_only_stable_and_digest_bound(self) -> None:
+        first = self.cli(
+            "quickstart", "plan", str(self.project), "--json", check=True
+        )
+        second = self.cli(
+            "quickstart", "plan", str(self.project), "--json", check=True
+        )
+        first_plan = json.loads(first.stdout)
+        second_plan = json.loads(second.stdout)
+
+        self.assertEqual(first_plan["status"], "PLAN_READY")
+        self.assertEqual(first_plan["plan_digest"], second_plan["plan_digest"])
+        self.assertTrue(all(asset["action"] == "create" for asset in first_plan["assets"]))
+        self.assertFalse((self.project / "CONSTITUTION.md").exists())
+        self.assertFalse((self.project / ".governance").exists())
+        self.assertFalse((self.project / ".acgm").exists())
+
+    def test_quickstart_requires_authorization_before_any_write(self) -> None:
+        result = self.cli("quickstart", "apply", str(self.project), "--json")
+        payload = json.loads(result.stdout)
+
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(payload["status"], "AUTHORIZATION_REQUIRED")
+        self.assertFalse((self.project / "CONSTITUTION.md").exists())
+        self.assertFalse((self.project / ".governance").exists())
+        self.assertFalse((self.project / ".acgm").exists())
+
+        authorized_without_digest = self.cli(
+            "quickstart", "apply", str(self.project), "--authorize", "--json"
+        )
+        self.assertEqual(authorized_without_digest.returncode, 2)
+        self.assertEqual(
+            json.loads(authorized_without_digest.stdout)["status"],
+            "PLAN_DIGEST_REQUIRED",
+        )
+        self.assertFalse((self.project / ".acgm").exists())
+
+    def test_quickstart_fresh_apply_preserves_agents_and_activates(self) -> None:
+        custom_agents = "# Existing instructions\n\nKeep this project policy unchanged.\n"
+        (self.project / "AGENTS.md").write_text(custom_agents, encoding="utf-8")
+        plan = json.loads(
+            self.cli(
+                "quickstart", "plan", str(self.project), "--json", check=True
+            ).stdout
+        )
+
+        applied = self.cli(
+            "quickstart",
+            "apply",
+            str(self.project),
+            "--plan-digest",
+            plan["plan_digest"],
+            "--authorize",
+            "--json",
+            check=True,
+        )
+        payload = json.loads(applied.stdout)
+
+        self.assertEqual(payload["status"], "AWAITING_PLATFORM_HOOK_ACCEPTANCE")
+        self.assertTrue(payload["ok"])
+        self.assertTrue(payload["claims"]["project_assets_verified"])
+        self.assertTrue(payload["claims"]["project_activated"])
+        self.assertFalse(payload["complete"])
+        self.assertEqual(
+            (self.project / "AGENTS.md").read_text(encoding="utf-8"), custom_agents
+        )
+        state = json.loads(
+            (self.project / ".acgm" / "codex.json").read_text(encoding="utf-8")
+        )
+        self.assertTrue(state["active"])
+        self.assertEqual(state["preset"], "standard-v1")
+        self.assertTrue(
+            (self.project / ".governance" / "decisions" / "0001-adopt-acgm-standard-v1.md").is_file()
+        )
+        self.assertTrue(
+            (self.project / ".governance" / "snapshots" / "bootstrap.md").is_file()
+        )
+
+    def test_quickstart_replaces_only_stock_placeholders_and_is_idempotent(self) -> None:
+        self.cli("init", str(self.project), check=True)
+        plan = json.loads(
+            self.cli(
+                "quickstart", "plan", str(self.project), "--json", check=True
+            ).stdout
+        )
+        actions = {asset["path"]: asset["action"] for asset in plan["assets"]}
+        self.assertEqual(actions["CONSTITUTION.md"], "replace-known-placeholder")
+        self.assertEqual(actions[".governance/scope.yml"], "replace-known-placeholder")
+
+        self.cli(
+            "quickstart",
+            "apply",
+            str(self.project),
+            "--plan-digest",
+            plan["plan_digest"],
+            "--authorize",
+            "--json",
+            check=True,
+        )
+        first_state = json.loads(
+            (self.project / ".acgm" / "codex.json").read_text(encoding="utf-8")
+        )
+        second_plan = json.loads(
+            self.cli(
+                "quickstart", "plan", str(self.project), "--json", check=True
+            ).stdout
+        )
+        self.cli(
+            "quickstart",
+            "apply",
+            str(self.project),
+            "--plan-digest",
+            second_plan["plan_digest"],
+            "--authorize",
+            "--json",
+            check=True,
+        )
+        second_state = json.loads(
+            (self.project / ".acgm" / "codex.json").read_text(encoding="utf-8")
+        )
+
+        self.assertEqual(first_state["activation_id"], second_state["activation_id"])
+        self.assertNotIn("[PLACEHOLDER]", (self.project / "CONSTITUTION.md").read_text())
+        self.assertNotIn(
+            "[PLACEHOLDER]",
+            (self.project / ".governance" / "scope.yml").read_text(),
+        )
+
+    def test_quickstart_stale_digest_and_unknown_placeholder_fail_before_write(self) -> None:
+        plan = json.loads(
+            self.cli(
+                "quickstart", "plan", str(self.project), "--json", check=True
+            ).stdout
+        )
+        (self.project / "README.md").write_text("changed after plan\n", encoding="utf-8")
+        stale = self.cli(
+            "quickstart",
+            "apply",
+            str(self.project),
+            "--plan-digest",
+            plan["plan_digest"],
+            "--authorize",
+            "--json",
+        )
+        self.assertEqual(json.loads(stale.stdout)["status"], "PLAN_STALE")
+        self.assertFalse((self.project / ".acgm").exists())
+
+        (self.project / "CONSTITUTION.md").write_text(
+            "# Custom Constitution\n\n[PLACEHOLDER] owner must decide.\n",
+            encoding="utf-8",
+        )
+        conflict_plan = json.loads(
+            self.cli(
+                "quickstart", "plan", str(self.project), "--json"
+            ).stdout
+        )
+        conflict = self.cli(
+            "quickstart",
+            "apply",
+            str(self.project),
+            "--plan-digest",
+            conflict_plan["plan_digest"],
+            "--authorize",
+            "--json",
+        )
+        conflict_payload = json.loads(conflict.stdout)
+        self.assertEqual(conflict.returncode, 2)
+        self.assertEqual(conflict_payload["status"], "PROJECT_ASSET_CONFLICT")
+        self.assertFalse((self.project / ".acgm").exists())
+
+    def test_quickstart_digest_detects_content_change_while_git_status_stays_dirty(self) -> None:
+        readme = self.project / "README.md"
+        readme.write_text("first untracked content\n", encoding="utf-8")
+        plan = json.loads(
+            self.cli(
+                "quickstart", "plan", str(self.project), "--json", check=True
+            ).stdout
+        )
+        readme.write_text("second untracked content\n", encoding="utf-8")
+
+        stale = self.cli(
+            "quickstart",
+            "apply",
+            str(self.project),
+            "--plan-digest",
+            plan["plan_digest"],
+            "--authorize",
+            "--json",
+        )
+
+        self.assertEqual(json.loads(stale.stdout)["status"], "PLAN_STALE")
+        self.assertFalse((self.project / ".acgm").exists())
+
+    def test_quickstart_requires_exact_root_and_rejects_managed_parent_symlink(self) -> None:
+        subdirectory = self.project / "nested"
+        subdirectory.mkdir()
+        wrong_root = self.cli(
+            "quickstart", "apply", str(subdirectory), "--authorize", "--json"
+        )
+        self.assertEqual(wrong_root.returncode, 2)
+        self.assertIn("exact Git repository root", wrong_root.stderr)
+        self.assertFalse((self.project / ".acgm").exists())
+
+        external = self.base / "external-governance"
+        external.mkdir()
+        (self.project / ".governance").symlink_to(external, target_is_directory=True)
+        conflict = self.cli(
+            "quickstart", "apply", str(self.project), "--authorize", "--json"
+        )
+        payload = json.loads(conflict.stdout)
+        self.assertEqual(conflict.returncode, 2)
+        self.assertEqual(payload["status"], "PROJECT_ASSET_CONFLICT")
+        self.assertFalse(any(external.iterdir()))
+        self.assertFalse((self.project / ".acgm").exists())
+
+    def test_quickstart_acgm_directory_swap_never_writes_outside_project(self) -> None:
+        for existing in (False, True):
+            with self.subTest(existing=existing):
+                project = self.make_repository(
+                    self.base / f"acgm-parent-swap-{existing}"
+                )
+                external = self.base / f"acgm-parent-external-{existing}"
+                external.mkdir()
+                expected_external: set[str] = set()
+                if existing:
+                    (project / ".acgm").mkdir()
+                    (project / ".acgm" / ".gitignore").write_text(
+                        "*\n!.gitignore\n", encoding="utf-8"
+                    )
+                    (external / ".gitignore").write_text(
+                        "*\n!.gitignore\n", encoding="utf-8"
+                    )
+                    expected_external.add(".gitignore")
+                backup = self.base / f"acgm-parent-backup-{existing}"
+                runtime = self.load_runtime_module()
+                injected = False
+                real_open = runtime.os.open
+
+                with mock.patch.dict(os.environ, self.env, clear=False):
+                    plan = runtime._quickstart_plan(str(project))
+
+                    def swap_after_parent_open(
+                        path: object,
+                        flags: int,
+                        *args: object,
+                        **kwargs: object,
+                    ) -> int:
+                        nonlocal injected
+                        if (
+                            str(path).startswith(
+                                ".quickstart.json.acgm-create-"
+                            )
+                            and kwargs.get("dir_fd") is not None
+                            and not injected
+                        ):
+                            (project / ".acgm").rename(backup)
+                            (project / ".acgm").symlink_to(
+                                external, target_is_directory=True
+                            )
+                            injected = True
+                        return real_open(path, flags, *args, **kwargs)
+
+                    with mock.patch.object(
+                        runtime.os, "open", side_effect=swap_after_parent_open
+                    ):
+                        result = runtime._apply_quickstart(
+                            str(project),
+                            authorized=True,
+                            expected_digest=plan["plan_digest"],
+                        )
+
+                self.assertTrue(injected)
+                self.assertEqual(result["status"], "PARTIAL_RECHECK_REQUIRED")
+                self.assertTrue(result["partial"])
+                self.assertEqual(
+                    {
+                        path.relative_to(external).as_posix()
+                        for path in external.rglob("*")
+                        if path.is_file()
+                    },
+                    expected_external,
+                )
+                self.assertFalse((external / "quickstart.json").exists())
+                self.assertFalse((external / "codex.json").exists())
+
+    def test_quickstart_new_directory_publication_never_adopts_concurrent_entry(
+        self,
+    ) -> None:
+        project = self.make_repository(self.base / "directory-publish-race")
+        external = self.base / "concurrent-directory"
+        external.mkdir()
+        (external / "owner-marker.txt").write_text(
+            "preserve\n", encoding="utf-8"
+        )
+        runtime = self.load_runtime_module()
+        injected = False
+        real_publish = runtime._rename_quickstart_directory_noreplace
+
+        with mock.patch.dict(os.environ, self.env, clear=False):
+            plan = runtime._quickstart_plan(str(project))
+
+            def publish_after_concurrent_entry(
+                parent_fd: int, source: str, destination: str
+            ) -> None:
+                nonlocal injected
+                if destination == ".acgm" and not injected:
+                    external.rename(project / ".acgm")
+                    injected = True
+                real_publish(parent_fd, source, destination)
+
+            with mock.patch.object(
+                runtime,
+                "_rename_quickstart_directory_noreplace",
+                side_effect=publish_after_concurrent_entry,
+            ):
+                result = runtime._apply_quickstart(
+                    str(project),
+                    authorized=True,
+                    expected_digest=plan["plan_digest"],
+                )
+
+        self.assertTrue(injected)
+        self.assertEqual(result["status"], "PARTIAL_RECHECK_REQUIRED")
+        self.assertFalse(result["ok"])
+        self.assertTrue(result["partial"])
+        self.assertEqual(
+            sorted(path.name for path in (project / ".acgm").iterdir()),
+            ["owner-marker.txt"],
+        )
+        self.assertFalse((project / "CONSTITUTION.md").exists())
+
+    def test_quickstart_late_asset_symlink_never_reports_success(self) -> None:
+        project = self.make_repository(self.base / "late-asset-symlink")
+        external = self.base / "external-constitution.md"
+        runtime = self.load_runtime_module()
+        external.write_text(runtime.STANDARD_CONSTITUTION, encoding="utf-8")
+        backup = self.base / "constitution-backup.md"
+        injected = False
+        real_baseline = runtime._quickstart_component_baseline_at
+
+        with mock.patch.dict(os.environ, self.env, clear=False):
+            plan = runtime._quickstart_plan(str(project))
+
+            def swap_after_anchored_verification(
+                root_fd: int,
+                governance_fd: int,
+                decisions_fd: int,
+                snapshots_fd: int,
+            ) -> dict[str, object]:
+                nonlocal injected
+                baseline = real_baseline(
+                    root_fd,
+                    governance_fd,
+                    decisions_fd,
+                    snapshots_fd,
+                )
+                if not injected:
+                    (project / "CONSTITUTION.md").rename(backup)
+                    (project / "CONSTITUTION.md").symlink_to(external)
+                    injected = True
+                return baseline
+
+            with mock.patch.object(
+                runtime,
+                "_quickstart_component_baseline_at",
+                side_effect=swap_after_anchored_verification,
+            ):
+                result = runtime._apply_quickstart(
+                    str(project),
+                    authorized=True,
+                    expected_digest=plan["plan_digest"],
+                )
+
+        self.assertTrue(injected)
+        self.assertEqual(result["status"], "PARTIAL_RECHECK_REQUIRED")
+        self.assertFalse(result["ok"])
+        self.assertFalse(result["complete"])
+        self.assertTrue(result["partial"])
+        self.assertTrue((project / "CONSTITUTION.md").is_symlink())
+        self.assertEqual(
+            external.read_text(encoding="utf-8"), runtime.STANDARD_CONSTITUTION
+        )
+
+    def test_quickstart_governance_directory_swaps_never_write_outside_project(
+        self,
+    ) -> None:
+        for relative in (
+            ".governance",
+            ".governance/decisions",
+            ".governance/snapshots",
+        ):
+            with self.subTest(relative=relative):
+                slug = relative.replace("/", "-").replace(".", "dot")
+                project = self.make_repository(self.base / f"parent-swap-{slug}")
+                (project / ".governance" / "decisions").mkdir(parents=True)
+                (project / ".governance" / "snapshots").mkdir(parents=True)
+                external = self.base / f"parent-external-{slug}"
+                external.mkdir()
+                (external / "owner-marker.txt").write_text(
+                    "preserve\n", encoding="utf-8"
+                )
+                backup = self.base / f"parent-backup-{slug}"
+                target = project / relative
+                trigger = {
+                    ".governance": ".scope.yml.acgm-create-",
+                    ".governance/decisions": (
+                        ".0001-adopt-acgm-standard-v1.md.acgm-create-"
+                    ),
+                    ".governance/snapshots": ".bootstrap.md.acgm-create-",
+                }[relative]
+                runtime = self.load_runtime_module()
+                injected = False
+                real_open = runtime.os.open
+
+                with mock.patch.dict(os.environ, self.env, clear=False):
+                    plan = runtime._quickstart_plan(str(project))
+
+                    def swap_after_parent_open(
+                        path: object,
+                        flags: int,
+                        *args: object,
+                        **kwargs: object,
+                    ) -> int:
+                        nonlocal injected
+                        if (
+                            str(path).startswith(trigger)
+                            and kwargs.get("dir_fd") is not None
+                            and not injected
+                        ):
+                            target.rename(backup)
+                            target.symlink_to(external, target_is_directory=True)
+                            injected = True
+                        return real_open(path, flags, *args, **kwargs)
+
+                    with mock.patch.object(
+                        runtime.os, "open", side_effect=swap_after_parent_open
+                    ):
+                        result = runtime._apply_quickstart(
+                            str(project),
+                            authorized=True,
+                            expected_digest=plan["plan_digest"],
+                        )
+
+                self.assertTrue(injected)
+                self.assertEqual(result["status"], "PARTIAL_RECHECK_REQUIRED")
+                self.assertTrue(result["partial"])
+                self.assertEqual(
+                    sorted(
+                        path.relative_to(external).as_posix()
+                        for path in external.rglob("*")
+                    ),
+                    ["owner-marker.txt"],
+                )
+
+    def test_quickstart_does_not_adopt_an_unknown_reserved_decision(self) -> None:
+        decision = (
+            self.project
+            / ".governance"
+            / "decisions"
+            / "0001-adopt-acgm-standard-v1.md"
+        )
+        decision.parent.mkdir(parents=True)
+        decision.write_text(
+            "# Existing unrelated decision\n\nThis reserved path already has project-owned meaning.\n",
+            encoding="utf-8",
+        )
+
+        plan_result = self.cli(
+            "quickstart", "plan", str(self.project), "--json"
+        )
+        plan = json.loads(plan_result.stdout)
+
+        self.assertEqual(plan_result.returncode, 2)
+        self.assertEqual(plan["status"], "PROJECT_ASSET_CONFLICT")
+        self.assertEqual(
+            decision.read_text(encoding="utf-8"),
+            "# Existing unrelated decision\n\nThis reserved path already has project-owned meaning.\n",
+        )
+        self.assertFalse((self.project / ".acgm").exists())
+
+    def test_quickstart_preserves_unknown_receipt_and_cas_binds_known_receipt(self) -> None:
+        receipt = self.project / ".acgm" / "quickstart.json"
+        receipt.parent.mkdir()
+        unknown = b'{"schema":"someone-elses-record","keep":true}\n'
+        receipt.write_bytes(unknown)
+
+        conflict = self.cli("quickstart", "plan", str(self.project), "--json")
+        conflict_payload = json.loads(conflict.stdout)
+
+        self.assertEqual(conflict.returncode, 2)
+        self.assertEqual(conflict_payload["status"], "PROJECT_ASSET_CONFLICT")
+        self.assertIn(
+            {"path": ".acgm/quickstart.json", "reason": "quickstart-receipt-is-unknown"},
+            conflict_payload["conflicts"],
+        )
+        self.assertEqual(receipt.read_bytes(), unknown)
+        self.assertFalse((self.project / "CONSTITUTION.md").exists())
+
+        known = {
+            "schema": "acgm-codex-quickstart-receipt-v1",
+            "status": "OLDER_KNOWN_RECEIPT",
+        }
+        receipt.write_text(json.dumps(known), encoding="utf-8")
+        plan = json.loads(
+            self.cli(
+                "quickstart", "plan", str(self.project), "--json", check=True
+            ).stdout
+        )
+        concurrently_changed = dict(known, note="changed after authorization plan")
+        receipt.write_text(json.dumps(concurrently_changed), encoding="utf-8")
+
+        stale = self.cli(
+            "quickstart",
+            "apply",
+            str(self.project),
+            "--plan-digest",
+            plan["plan_digest"],
+            "--authorize",
+            "--json",
+        )
+
+        self.assertEqual(json.loads(stale.stdout)["status"], "PLAN_STALE")
+        self.assertEqual(json.loads(receipt.read_text(encoding="utf-8")), concurrently_changed)
+        self.assertFalse((self.project / "CONSTITUTION.md").exists())
+
+    def test_quickstart_policy_final_cas_preserves_edit_at_replace_boundary(self) -> None:
+        self.cli("init", str(self.project), check=True)
+        state_path = self.project / ".acgm" / "codex.json"
+        state_before = state_path.read_bytes()
+        runtime = self.load_runtime_module()
+        concurrent_policy = (
+            "# Concurrent project-owner policy\n\n"
+            "This edit arrived at the final replacement boundary and must survive.\n"
+        )
+        injected = False
+        real_link = runtime.os.link
+
+        with mock.patch.dict(os.environ, self.env, clear=False):
+            plan = runtime._quickstart_plan(str(self.project))
+
+            def edit_immediately_before_publish(
+                source: object, destination: object, *args: object, **kwargs: object
+            ) -> object:
+                nonlocal injected
+                source_path = Path(source)
+                destination_path = Path(destination)
+                if (
+                    destination_path.name == "CONSTITUTION.md"
+                    and ".acgm-prepared-" in source_path.name
+                    and not injected
+                ):
+                    self.write_dirfd_file(
+                        int(kwargs["dst_dir_fd"]),
+                        destination_path.name,
+                        concurrent_policy,
+                    )
+                    injected = True
+                return real_link(source, destination, *args, **kwargs)
+
+            with mock.patch.object(
+                runtime.os, "link", side_effect=edit_immediately_before_publish
+            ):
+                result = runtime._apply_quickstart(
+                    str(self.project),
+                    authorized=True,
+                    expected_digest=plan["plan_digest"],
+                )
+
+        self.assertTrue(injected)
+        self.assertEqual(result["status"], "PARTIAL_RECHECK_REQUIRED")
+        self.assertTrue(result["partial"])
+        self.assertEqual(
+            (self.project / "CONSTITUTION.md").read_text(encoding="utf-8"),
+            concurrent_policy,
+        )
+        self.assertEqual(state_path.read_bytes(), state_before)
+
+    def test_quickstart_policy_creation_never_overwrites_concurrent_writer(self) -> None:
+        runtime = self.load_runtime_module()
+        concurrent_policy = (
+            "# Concurrent project-owner policy\n\n"
+            "This file won the no-overwrite creation boundary.\n"
+        )
+        injected = False
+        real_link = runtime.os.link
+
+        with mock.patch.dict(os.environ, self.env, clear=False):
+            plan = runtime._quickstart_plan(str(self.project))
+
+            def create_immediately_before_publish(
+                source: object, destination: object, *args: object, **kwargs: object
+            ) -> object:
+                nonlocal injected
+                source_path = Path(source)
+                destination_path = Path(destination)
+                if (
+                    destination_path.name == "CONSTITUTION.md"
+                    and ".acgm-create-" in source_path.name
+                    and not injected
+                ):
+                    self.write_dirfd_file(
+                        int(kwargs["dst_dir_fd"]),
+                        destination_path.name,
+                        concurrent_policy,
+                    )
+                    injected = True
+                return real_link(source, destination, *args, **kwargs)
+
+            with mock.patch.object(
+                runtime.os, "link", side_effect=create_immediately_before_publish
+            ):
+                result = runtime._apply_quickstart(
+                    str(self.project),
+                    authorized=True,
+                    expected_digest=plan["plan_digest"],
+                )
+
+        self.assertTrue(injected)
+        self.assertEqual(result["status"], "PARTIAL_RECHECK_REQUIRED")
+        self.assertTrue(result["partial"])
+        self.assertEqual(
+            (self.project / "CONSTITUTION.md").read_text(encoding="utf-8"),
+            concurrent_policy,
+        )
+        self.assertFalse((self.project / ".acgm" / "codex.json").exists())
+        self.assertFalse(
+            any(".acgm-create-" in path.name for path in self.project.rglob("*"))
+        )
+
+    def test_quickstart_receipt_creation_never_overwrites_concurrent_writer(self) -> None:
+        runtime = self.load_runtime_module()
+        concurrent_receipt = {
+            "schema": "concurrent-owner-receipt-v1",
+            "concurrent_writer": "preserve-me",
+        }
+        injected = False
+        real_link = runtime.os.link
+
+        with mock.patch.dict(os.environ, self.env, clear=False):
+            plan = runtime._quickstart_plan(str(self.project))
+
+            def create_immediately_before_publish(
+                source: object, destination: object, *args: object, **kwargs: object
+            ) -> object:
+                nonlocal injected
+                source_path = Path(source)
+                destination_path = Path(destination)
+                if (
+                    destination_path.name == "quickstart.json"
+                    and ".acgm-create-" in source_path.name
+                    and not injected
+                ):
+                    self.write_dirfd_file(
+                        int(kwargs["dst_dir_fd"]),
+                        destination_path.name,
+                        json.dumps(concurrent_receipt),
+                    )
+                    injected = True
+                return real_link(source, destination, *args, **kwargs)
+
+            with mock.patch.object(
+                runtime.os, "link", side_effect=create_immediately_before_publish
+            ):
+                result = runtime._apply_quickstart(
+                    str(self.project),
+                    authorized=True,
+                    expected_digest=plan["plan_digest"],
+                )
+
+        receipt_path = self.project / ".acgm" / "quickstart.json"
+        self.assertTrue(injected)
+        self.assertEqual(result["status"], "PARTIAL_RECHECK_REQUIRED")
+        self.assertTrue(result["partial"])
+        self.assertEqual(
+            json.loads(receipt_path.read_text(encoding="utf-8")),
+            concurrent_receipt,
+        )
+        self.assertFalse((self.project / "CONSTITUTION.md").exists())
+        self.assertFalse(
+            any(".acgm-create-" in path.name for path in self.project.rglob("*"))
+        )
+
+    def test_quickstart_receipt_creation_never_adopts_post_publish_edit(self) -> None:
+        runtime = self.load_runtime_module()
+        concurrent_receipt = {
+            "schema": "concurrent-owner-receipt-v1",
+            "concurrent_writer": "post-publish-preserve-me",
+        }
+        injected = False
+        real_write_new_json = runtime._write_new_json_at
+
+        with mock.patch.dict(os.environ, self.env, clear=False):
+            plan = runtime._quickstart_plan(str(self.project))
+
+            def edit_after_publish(
+                directory_fd: int,
+                name: str,
+                value: dict[str, object],
+                mode: int = 0o600,
+            ) -> str:
+                nonlocal injected
+                digest = real_write_new_json(directory_fd, name, value, mode)
+                if name == "quickstart.json" and not injected:
+                    self.write_dirfd_file(
+                        directory_fd, name, json.dumps(concurrent_receipt)
+                    )
+                    injected = True
+                return digest
+
+            with mock.patch.object(
+                runtime, "_write_new_json_at", side_effect=edit_after_publish
+            ):
+                result = runtime._apply_quickstart(
+                    str(self.project),
+                    authorized=True,
+                    expected_digest=plan["plan_digest"],
+                )
+
+        receipt_path = self.project / ".acgm" / "quickstart.json"
+        self.assertTrue(injected)
+        self.assertEqual(result["status"], "PARTIAL_RECHECK_REQUIRED")
+        self.assertEqual(
+            json.loads(receipt_path.read_text(encoding="utf-8")),
+            concurrent_receipt,
+        )
+        self.assertFalse((self.project / "CONSTITUTION.md").exists())
+
+    def test_quickstart_state_creation_never_overwrites_concurrent_writer(self) -> None:
+        runtime = self.load_runtime_module()
+        concurrent_state = {
+            "schema": "concurrent-owner-state-v1",
+            "concurrent_writer": "preserve-me",
+        }
+        injected = False
+        real_link = runtime.os.link
+
+        with mock.patch.dict(os.environ, self.env, clear=False):
+            plan = runtime._quickstart_plan(str(self.project))
+
+            def create_immediately_before_publish(
+                source: object, destination: object, *args: object, **kwargs: object
+            ) -> object:
+                nonlocal injected
+                source_path = Path(source)
+                destination_path = Path(destination)
+                if (
+                    destination_path.name == "codex.json"
+                    and ".acgm-create-" in source_path.name
+                    and not injected
+                ):
+                    self.write_dirfd_file(
+                        int(kwargs["dst_dir_fd"]),
+                        destination_path.name,
+                        json.dumps(concurrent_state),
+                    )
+                    injected = True
+                return real_link(source, destination, *args, **kwargs)
+
+            with mock.patch.object(
+                runtime.os, "link", side_effect=create_immediately_before_publish
+            ):
+                result = runtime._apply_quickstart(
+                    str(self.project),
+                    authorized=True,
+                    expected_digest=plan["plan_digest"],
+                )
+
+        state_path = self.project / ".acgm" / "codex.json"
+        self.assertTrue(injected)
+        self.assertEqual(result["status"], "PARTIAL_RECHECK_REQUIRED")
+        self.assertTrue(result["partial"])
+        self.assertEqual(
+            json.loads(state_path.read_text(encoding="utf-8")), concurrent_state
+        )
+        self.assertFalse(
+            any(".acgm-create-" in path.name for path in self.project.rglob("*"))
+        )
+
+    def test_quickstart_receipt_final_cas_preserves_concurrent_edit(self) -> None:
+        initial_plan = json.loads(
+            self.cli(
+                "quickstart", "plan", str(self.project), "--json", check=True
+            ).stdout
+        )
+        self.cli(
+            "quickstart",
+            "apply",
+            str(self.project),
+            "--plan-digest",
+            initial_plan["plan_digest"],
+            "--authorize",
+            "--json",
+            check=True,
+        )
+        receipt_path = self.project / ".acgm" / "quickstart.json"
+        receipt_before = json.loads(receipt_path.read_text(encoding="utf-8"))
+        runtime = self.load_runtime_module()
+        injected = False
+        real_link = runtime.os.link
+
+        with mock.patch.dict(os.environ, self.env, clear=False):
+            plan = runtime._quickstart_plan(str(self.project))
+
+            def edit_immediately_before_publish(
+                source: object, destination: object, *args: object, **kwargs: object
+            ) -> object:
+                nonlocal injected
+                source_path = Path(source)
+                destination_path = Path(destination)
+                if (
+                    destination_path.name == "quickstart.json"
+                    and ".acgm-prepared-" in source_path.name
+                    and not injected
+                ):
+                    concurrent = dict(receipt_before)
+                    concurrent["concurrent_writer"] = "preserve-me"
+                    self.write_dirfd_file(
+                        int(kwargs["dst_dir_fd"]),
+                        destination_path.name,
+                        json.dumps(concurrent),
+                    )
+                    injected = True
+                return real_link(source, destination, *args, **kwargs)
+
+            with mock.patch.object(
+                runtime.os, "link", side_effect=edit_immediately_before_publish
+            ):
+                result = runtime._apply_quickstart(
+                    str(self.project),
+                    authorized=True,
+                    expected_digest=plan["plan_digest"],
+                )
+
+        self.assertTrue(injected)
+        self.assertEqual(result["status"], "PARTIAL_RECHECK_REQUIRED")
+        self.assertTrue(result["partial"])
+        self.assertEqual(
+            json.loads(receipt_path.read_text(encoding="utf-8"))["concurrent_writer"],
+            "preserve-me",
+        )
+
+    def test_quickstart_receipt_replacement_never_adopts_post_publish_edit(self) -> None:
+        initial_plan = json.loads(
+            self.cli(
+                "quickstart", "plan", str(self.project), "--json", check=True
+            ).stdout
+        )
+        self.cli(
+            "quickstart",
+            "apply",
+            str(self.project),
+            "--plan-digest",
+            initial_plan["plan_digest"],
+            "--authorize",
+            "--json",
+            check=True,
+        )
+        receipt_path = self.project / ".acgm" / "quickstart.json"
+        concurrent_receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        concurrent_receipt["concurrent_writer"] = "post-publish-preserve-me"
+        runtime = self.load_runtime_module()
+        injected = False
+        real_cas_json_at = runtime._quickstart_cas_json_at
+
+        with mock.patch.dict(os.environ, self.env, clear=False):
+            plan = runtime._quickstart_plan(str(self.project))
+
+            def edit_after_publish(
+                directory_fd: int,
+                name: str,
+                value: dict[str, object],
+                expected_sha256: str,
+                *,
+                mode: int = 0o600,
+            ) -> str:
+                nonlocal injected
+                digest = real_cas_json_at(
+                    directory_fd,
+                    name,
+                    value,
+                    expected_sha256,
+                    mode=mode,
+                )
+                if name == "quickstart.json" and not injected:
+                    self.write_dirfd_file(
+                        directory_fd,
+                        name,
+                        json.dumps(concurrent_receipt),
+                    )
+                    injected = True
+                return digest
+
+            with mock.patch.object(
+                runtime,
+                "_quickstart_cas_json_at",
+                side_effect=edit_after_publish,
+            ):
+                result = runtime._apply_quickstart(
+                    str(self.project),
+                    authorized=True,
+                    expected_digest=plan["plan_digest"],
+                )
+
+        self.assertTrue(injected)
+        self.assertEqual(result["status"], "PARTIAL_RECHECK_REQUIRED")
+        self.assertEqual(
+            json.loads(receipt_path.read_text(encoding="utf-8")),
+            concurrent_receipt,
+        )
+
+    def test_quickstart_safely_upgrades_version_only_state_in_one_authorization(self) -> None:
+        initial_plan = json.loads(
+            self.cli(
+                "quickstart", "plan", str(self.project), "--json", check=True
+            ).stdout
+        )
+        self.cli(
+            "quickstart",
+            "apply",
+            str(self.project),
+            "--plan-digest",
+            initial_plan["plan_digest"],
+            "--authorize",
+            "--json",
+            check=True,
+        )
+        state_path = self.project / ".acgm" / "codex.json"
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        activation_id = state["activation_id"]
+        state["version"] = "0.1.0-rc.4"
+        state_path.write_text(json.dumps(state), encoding="utf-8")
+
+        plan = json.loads(
+            self.cli(
+                "quickstart", "plan", str(self.project), "--json", check=True
+            ).stdout
+        )
+        self.assertTrue(plan["version_only_upgrade"])
+        upgraded = json.loads(
+            self.cli(
+                "quickstart",
+                "apply",
+                str(self.project),
+                "--plan-digest",
+                plan["plan_digest"],
+                "--authorize",
+                "--json",
+                check=True,
+            ).stdout
+        )
+        current = json.loads(state_path.read_text(encoding="utf-8"))
+
+        self.assertTrue(upgraded["ok"])
+        self.assertEqual(current["version"], VERSION)
+        self.assertEqual(current["activation_id"], activation_id)
+        self.assertIn("upgraded_at", current)
+
+        for incompatible_version in ("99.0.0", "0.1.0-local-build"):
+            with self.subTest(incompatible_version=incompatible_version):
+                incompatible = dict(current, version=incompatible_version)
+                state_path.write_text(json.dumps(incompatible), encoding="utf-8")
+                rejected = self.cli(
+                    "quickstart", "plan", str(self.project), "--json"
+                )
+                rejected_plan = json.loads(rejected.stdout)
+                self.assertEqual(rejected.returncode, 2)
+                self.assertFalse(rejected_plan["version_only_upgrade"])
+                self.assertIn(
+                    {
+                        "path": ".acgm/codex.json",
+                        "reason": "adapter-version-not-compatible",
+                    },
+                    rejected_plan["conflicts"],
+                )
+                self.assertEqual(
+                    json.loads(state_path.read_text(encoding="utf-8"))["version"],
+                    incompatible_version,
+                )
+
+    def test_quickstart_state_final_cas_preserves_concurrent_edit(self) -> None:
+        initial_plan = json.loads(
+            self.cli(
+                "quickstart", "plan", str(self.project), "--json", check=True
+            ).stdout
+        )
+        self.cli(
+            "quickstart",
+            "apply",
+            str(self.project),
+            "--plan-digest",
+            initial_plan["plan_digest"],
+            "--authorize",
+            "--json",
+            check=True,
+        )
+        state_path = self.project / ".acgm" / "codex.json"
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        state["version"] = "0.1.0-rc.4"
+        state_path.write_text(json.dumps(state), encoding="utf-8")
+        runtime = self.load_runtime_module()
+        injected = False
+        real_link = runtime.os.link
+
+        with mock.patch.dict(os.environ, self.env, clear=False):
+            plan = runtime._quickstart_plan(str(self.project))
+
+            def edit_immediately_before_publish(
+                source: object, destination: object, *args: object, **kwargs: object
+            ) -> object:
+                nonlocal injected
+                source_path = Path(source)
+                destination_path = Path(destination)
+                if (
+                    destination_path.name == "codex.json"
+                    and ".acgm-prepared-" in source_path.name
+                    and not injected
+                ):
+                    concurrent = dict(state)
+                    concurrent["concurrent_writer"] = "preserve-me"
+                    self.write_dirfd_file(
+                        int(kwargs["dst_dir_fd"]),
+                        destination_path.name,
+                        json.dumps(concurrent),
+                    )
+                    injected = True
+                return real_link(source, destination, *args, **kwargs)
+
+            with mock.patch.object(
+                runtime.os, "link", side_effect=edit_immediately_before_publish
+            ):
+                result = runtime._apply_quickstart(
+                    str(self.project),
+                    authorized=True,
+                    expected_digest=plan["plan_digest"],
+                )
+
+        self.assertTrue(injected)
+        self.assertEqual(result["status"], "PARTIAL_RECHECK_REQUIRED")
+        self.assertTrue(result["partial"])
+        current = json.loads(state_path.read_text(encoding="utf-8"))
+        self.assertEqual(current["version"], "0.1.0-rc.4")
+        self.assertEqual(current["concurrent_writer"], "preserve-me")
+
+    def test_quickstart_adopts_standard_preset_into_healthy_manual_activation(self) -> None:
+        self.init_activate()
+        state_path = self.project / ".acgm" / "codex.json"
+        original = json.loads(state_path.read_text(encoding="utf-8"))
+        plan = json.loads(
+            self.cli(
+                "quickstart", "plan", str(self.project), "--json", check=True
+            ).stdout
+        )
+
+        self.assertEqual(plan["project_state"], "GOVERNED")
+        self.assertTrue(plan["planned_active_rebaseline"])
+        applied = json.loads(
+            self.cli(
+                "quickstart",
+                "apply",
+                str(self.project),
+                "--plan-digest",
+                plan["plan_digest"],
+                "--authorize",
+                "--json",
+                check=True,
+            ).stdout
+        )
+        current = json.loads(state_path.read_text(encoding="utf-8"))
+        doctor = json.loads(
+            self.cli("doctor", str(self.project), "--json", check=True).stdout
+        )
+
+        self.assertFalse(applied["partial"])
+        self.assertEqual(current["activation_id"], original["activation_id"])
+        self.assertEqual(current["preset"], "standard-v1")
+        self.assertIn("quickstart_rebaselined_at", current)
+        self.assertTrue(
+            (
+                self.project
+                / ".governance"
+                / "decisions"
+                / "0001-adopt-acgm-standard-v1.md"
+            ).is_file()
+        )
+        self.assertTrue(
+            (self.project / ".governance" / "snapshots" / "bootstrap.md").is_file()
+        )
+        self.assertEqual(doctor["project_state"], "GOVERNED")
+
+    def test_quickstart_final_git_guard_blocks_mid_apply_nonmanaged_change(self) -> None:
+        runtime = self.load_runtime_module()
+        with mock.patch.dict(os.environ, self.env, clear=False):
+            plan = runtime._quickstart_plan(str(self.project))
+            original = runtime._write_quickstart_receipt_cas_at
+            call_count = 0
+
+            def race_after_assets(
+                directory_fd: int,
+                value: dict[str, object],
+                expected: str | None,
+            ) -> str:
+                nonlocal call_count
+                digest = original(directory_fd, value, expected)
+                call_count += 1
+                if call_count == len(plan["assets"]) + 1:
+                    (self.project / "README.md").write_text(
+                        "concurrent nonmanaged change\n", encoding="utf-8"
+                    )
+                return digest
+
+            with mock.patch.object(
+                runtime,
+                "_write_quickstart_receipt_cas_at",
+                side_effect=race_after_assets,
+            ):
+                result = runtime._apply_quickstart(
+                    str(self.project),
+                    authorized=True,
+                    expected_digest=plan["plan_digest"],
+                )
+
+        self.assertEqual(result["status"], "PARTIAL_RECHECK_REQUIRED")
+        self.assertIn("Git identity or state changed", result["error"])
+        self.assertFalse((self.project / ".acgm" / "codex.json").exists())
+
+    def test_quickstart_final_git_guard_blocks_mid_apply_index_change(self) -> None:
+        runtime = self.load_runtime_module()
+        with mock.patch.dict(os.environ, self.env, clear=False):
+            plan = runtime._quickstart_plan(str(self.project))
+            original = runtime._write_quickstart_receipt_cas_at
+            call_count = 0
+
+            def stage_after_assets(
+                directory_fd: int,
+                value: dict[str, object],
+                expected: str | None,
+            ) -> str:
+                nonlocal call_count
+                digest = original(directory_fd, value, expected)
+                call_count += 1
+                if call_count == len(plan["assets"]) + 1:
+                    subprocess.run(
+                        ["git", "-C", str(self.project), "add", "CONSTITUTION.md"],
+                        check=True,
+                        capture_output=True,
+                    )
+                return digest
+
+            with mock.patch.object(
+                runtime,
+                "_write_quickstart_receipt_cas_at",
+                side_effect=stage_after_assets,
+            ):
+                result = runtime._apply_quickstart(
+                    str(self.project),
+                    authorized=True,
+                    expected_digest=plan["plan_digest"],
+                )
+
+        self.assertEqual(result["status"], "PARTIAL_RECHECK_REQUIRED")
+        self.assertIn("Git identity or state changed", result["error"])
+        self.assertFalse((self.project / ".acgm" / "codex.json").exists())
+
+    def test_quickstart_state_and_postimage_cas_block_version_rebaseline_races(self) -> None:
+        initial_plan = json.loads(
+            self.cli(
+                "quickstart", "plan", str(self.project), "--json", check=True
+            ).stdout
+        )
+        self.cli(
+            "quickstart",
+            "apply",
+            str(self.project),
+            "--plan-digest",
+            initial_plan["plan_digest"],
+            "--authorize",
+            "--json",
+            check=True,
+        )
+        state_path = self.project / ".acgm" / "codex.json"
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        state["version"] = "0.1.0-rc.4"
+        state_path.write_text(json.dumps(state), encoding="utf-8")
+        runtime = self.load_runtime_module()
+
+        with mock.patch.dict(os.environ, self.env, clear=False):
+            plan = runtime._quickstart_plan(str(self.project))
+            original_activate = runtime._activate_project
+
+            def race_state(root: Path, **kwargs: object) -> tuple[dict[str, object], bool]:
+                concurrent = json.loads(state_path.read_text(encoding="utf-8"))
+                concurrent["concurrent_writer"] = "preserve-me"
+                state_path.write_text(json.dumps(concurrent), encoding="utf-8")
+                return original_activate(root, **kwargs)
+
+            with mock.patch.object(runtime, "_activate_project", side_effect=race_state):
+                state_race = runtime._apply_quickstart(
+                    str(self.project),
+                    authorized=True,
+                    expected_digest=plan["plan_digest"],
+                )
+
+        self.assertEqual(state_race["status"], "PARTIAL_RECHECK_REQUIRED")
+        preserved = json.loads(state_path.read_text(encoding="utf-8"))
+        self.assertEqual(preserved["version"], "0.1.0-rc.4")
+        self.assertEqual(preserved["concurrent_writer"], "preserve-me")
+
+        preserved.pop("concurrent_writer")
+        state_path.write_text(json.dumps(preserved), encoding="utf-8")
+        decision = (
+            self.project
+            / ".governance"
+            / "decisions"
+            / "0001-adopt-acgm-standard-v1.md"
+        )
+        with mock.patch.dict(os.environ, self.env, clear=False):
+            postimage_plan = runtime._quickstart_plan(str(self.project))
+
+            def race_postimage(
+                root: Path, **kwargs: object
+            ) -> tuple[dict[str, object], bool]:
+                decision.write_text(
+                    decision.read_text(encoding="utf-8")
+                    + "\nConcurrent governance edit.\n",
+                    encoding="utf-8",
+                )
+                return original_activate(root, **kwargs)
+
+            with mock.patch.object(
+                runtime, "_activate_project", side_effect=race_postimage
+            ):
+                postimage_race = runtime._apply_quickstart(
+                    str(self.project),
+                    authorized=True,
+                    expected_digest=postimage_plan["plan_digest"],
+                )
+
+        self.assertEqual(postimage_race["status"], "PARTIAL_RECHECK_REQUIRED")
+        self.assertIn("managed asset changed", postimage_race["error"])
+        self.assertFalse(postimage_race["claims"]["project_activated"])
+        self.assertNotIn(
+            "activation:updated", postimage_race["completed_steps"]
+        )
+        self.assertEqual(
+            json.loads(state_path.read_text(encoding="utf-8"))["version"],
+            "0.1.0-rc.4",
+        )
+
+    def test_quickstart_status_completes_after_real_hook_observation(self) -> None:
+        plan = json.loads(
+            self.cli(
+                "quickstart", "plan", str(self.project), "--json", check=True
+            ).stdout
+        )
+        self.cli(
+            "quickstart",
+            "apply",
+            str(self.project),
+            "--plan-digest",
+            plan["plan_digest"],
+            "--authorize",
+            "--json",
+            check=True,
+        )
+        before = json.loads(
+            self.cli(
+                "quickstart", "status", str(self.project), "--json", check=True
+            ).stdout
+        )
+        self.assertEqual(before["status"], "AWAITING_PLATFORM_HOOK_ACCEPTANCE")
+
+        self.pre_bash("git status --short")
+        after = json.loads(
+            self.cli(
+                "quickstart", "status", str(self.project), "--json", check=True
+            ).stdout
+        )
+        self.assertEqual(after["status"], "COMPLETE")
+        self.assertTrue(after["complete"])
+
+    def test_unborn_empty_parent_with_multiple_repositories_is_ambiguous(self) -> None:
+        workspace, repositories = self.make_container_workspace("alpha", "beta", "gamma")
+
+        result = self.cli("init", cwd=workspace)
+
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("multiple repositories", result.stderr)
+        for root in [workspace, *repositories]:
+            self.assertFalse((root / "CONSTITUTION.md").exists())
+            self.assertFalse((root / ".governance").exists())
+            self.assertFalse((root / ".acgm").exists())
+
+    def test_inactive_residual_adapter_does_not_hide_ambiguous_container(self) -> None:
+        workspace, repositories = self.make_container_workspace("alpha", "beta")
+        state_path = workspace / ".acgm" / "codex.json"
+        state_path.parent.mkdir()
+        residual = {
+            "schema": "acgm-codex-state-v1",
+            "version": VERSION,
+            "active": False,
+            "platform": "codex",
+        }
+        state_path.write_text(json.dumps(residual), encoding="utf-8")
+        before = state_path.read_bytes()
+
+        result = self.cli("init", cwd=workspace)
+
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("multiple repositories", result.stderr)
+        self.assertEqual(state_path.read_bytes(), before)
+        self.assertFalse((workspace / "CONSTITUTION.md").exists())
+        for repository in repositories:
+            self.assertFalse((repository / "CONSTITUTION.md").exists())
+
+        _, hook_output = self.hook(
+            "session-start",
+            self.payload("SessionStart", cwd=str(workspace), source="startup"),
+        )
+        context = hook_output["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("multi-repository workspace", context)
+        self.assertEqual(state_path.read_bytes(), before)
+        self.assertFalse(self.data.exists())
+
+    def test_ambiguous_session_start_fails_open_without_ledger_or_init_hint(self) -> None:
+        workspace, _ = self.make_container_workspace("alpha", "beta")
+
+        _, output = self.hook(
+            "session-start",
+            self.payload("SessionStart", cwd=str(workspace), source="startup"),
+        )
+
+        context = output["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("multi-repository workspace", context)
+        self.assertNotIn("acgm-codex init", context)
+        self.assertFalse(self.data.exists())
+
+    def test_explicit_child_init_writes_only_selected_repository(self) -> None:
+        workspace, repositories = self.make_container_workspace("alpha", "beta")
+        selected = repositories[1]
+
+        result = self.cli("init", str(selected), cwd=workspace, check=True)
+
+        self.assertIn("initialized without overwriting", result.stdout)
+        self.assertTrue((selected / "CONSTITUTION.md").is_file())
+        self.assertFalse((workspace / "CONSTITUTION.md").exists())
+        self.assertFalse((repositories[0] / "CONSTITUTION.md").exists())
+
+    def test_unique_direct_repository_is_selected_from_empty_container(self) -> None:
+        workspace, repositories = self.make_container_workspace("only-project")
+
+        self.cli("init", cwd=workspace, check=True)
+
+        self.assertTrue((repositories[0] / "CONSTITUTION.md").is_file())
+        self.assertFalse((workspace / "CONSTITUTION.md").exists())
+
+    def test_unique_child_is_not_selected_when_unborn_parent_has_other_files(
+        self,
+    ) -> None:
+        for marker_name, ignored in (
+            ("PARENT_NOTES.md", False),
+            ("ignored-parent-state.log", True),
+        ):
+            with self.subTest(marker=marker_name, ignored=ignored):
+                workspace, repositories = self.make_container_workspace(
+                    "only-" + ("ignored" if ignored else "untracked")
+                )
+                if ignored:
+                    exclude = workspace / ".git" / "info" / "exclude"
+                    exclude.write_text(marker_name + "\n", encoding="utf-8")
+                marker = workspace / marker_name
+                marker.write_text("parent-owned work\n", encoding="utf-8")
+
+                result = self.cli("init", cwd=workspace)
+
+                self.assertEqual(result.returncode, 2)
+                self.assertIn("non-container files", result.stderr)
+                self.assertEqual(marker.read_text(encoding="utf-8"), "parent-owned work\n")
+                self.assertFalse((workspace / "CONSTITUTION.md").exists())
+                self.assertFalse((repositories[0] / "CONSTITUTION.md").exists())
+                _, output = self.hook(
+                    "session-start",
+                    self.payload(
+                        "SessionStart", cwd=str(workspace), source="startup"
+                    ),
+                )
+                context = output["hookSpecificOutput"]["additionalContext"]
+                self.assertIn("multi-repository workspace", context)
+                self.assertFalse(self.data.exists())
+
+    def test_committed_parent_with_nested_repository_remains_the_project(self) -> None:
+        workspace = self.make_repository(self.base / "committed-parent")
+        nested = self.make_repository(workspace / "nested")
+
+        self.cli("init", cwd=workspace, check=True)
+
+        self.assertTrue((workspace / "CONSTITUTION.md").is_file())
+        self.assertFalse((nested / "CONSTITUTION.md").exists())
 
     def test_directory_content_change_produces_drift(self) -> None:
         self.init_activate()
@@ -555,7 +2013,7 @@ class RuntimeTests(unittest.TestCase):
         )
         self.assertEqual(self.hook("permission-request", payload)[1], {})
 
-    def test_heartbeat_events_are_limited_to_lifecycle_hooks(self) -> None:
+    def test_first_trusted_hook_completes_heartbeat_without_second_task(self) -> None:
         self.init_activate()
         self.pre_bash("git status --short")
         self.post_bash("git status --short")
@@ -572,7 +2030,7 @@ class RuntimeTests(unittest.TestCase):
         ]
         self.assertEqual(
             [event["category"] for event in heartbeats],
-            ["session-start", "subagent-start", "pre-compact"],
+            ["pre-tool", "session-start", "subagent-start", "pre-compact"],
         )
 
     def test_preactivation_heartbeat_is_stale_and_later_runtime_error_is_unhealthy(self) -> None:
@@ -603,6 +2061,15 @@ class RuntimeTests(unittest.TestCase):
         self.assertFalse(after_error["hook"]["observed"])
         self.assertTrue(after_error["hook"]["runtime_error_after_last_heartbeat"])
         self.assertFalse(after_error["healthy"])
+        quickstart_status = self.cli(
+            "quickstart", "status", str(self.project), "--json"
+        )
+        status_payload = json.loads(quickstart_status.stdout)
+        self.assertEqual(quickstart_status.returncode, 2)
+        self.assertEqual(status_payload["status"], "HOOK_RUNTIME_REPAIR_REQUIRED")
+        self.assertNotEqual(
+            status_payload["status"], "AWAITING_PLATFORM_HOOK_ACCEPTANCE"
+        )
 
     def test_plugin_data_locator_shares_hook_ledger_with_standalone_cli(self) -> None:
         self.init_activate()
@@ -901,7 +2368,7 @@ runpy.run_path(runtime, run_name="__main__")
         )
         self.assertEqual(
             len([event for event in events if event["kind"] == "hook-heartbeat"]),
-            0,
+            1,
         )
 
     def test_one_time_gate_consumption_is_atomic_under_concurrency(self) -> None:

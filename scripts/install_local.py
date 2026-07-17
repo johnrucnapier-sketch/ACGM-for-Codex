@@ -4,7 +4,7 @@
 The workspace checkout remains the canonical development source.  This command
 copies a clean snapshot to ``~/plugins/acgm-codex``, updates the personal
 marketplace, installs a stable CLI wrapper, and asks Codex to refresh its cache.
-Public users must use ``scripts/bootstrap.py`` and the tagged Git marketplace;
+Public users should use ``scripts/quickstart.py`` and the tagged Git marketplace;
 this helper is not a legacy migration mechanism.
 """
 

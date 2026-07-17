@@ -9,10 +9,10 @@ source-minimized local Event Ledger.
 
 [中文](README.md)
 
-> **Status: `0.1.0-rc.4`.** This is a public-preview release candidate, not a stable
+> **Status: `0.2.0-rc.1`.** This is a public-preview release candidate, not a stable
 > release. Automated tests can validate the package and runtime. Automatic Hook
-> behavior is not considered verified until the clean-task E2E checklist passes
-> on the installed Codex version.
+> behavior is not considered verified until Hook trust and real tool-call E2E pass
+> in a completely new task on the installed Codex version.
 
 This product does not overwrite or replace
 [ACGM for Claude Code](https://github.com/johnrucnapier-sketch/Agent-Coding-Governance-Methodology).
@@ -54,7 +54,9 @@ equates “installed” with “fully enforced.”
 - A local, append-only, source-minimized Event Ledger.
 - Four skills: `governance-bootstrap`, `session-grounding`, `truth-first`, and
   `activity-report`.
-- The `acgm-codex` CLI with `init`, `activate`, `doctor`, `report`,
+- One-consent quickstart that provisions a versioned governance preset,
+  activates the exact project, and checks local postconditions.
+- The `acgm-codex` CLI with `quickstart`, `init`, `activate`, `doctor`, `report`,
   `export-case`, `resolve`, `gate`, and `version`.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) and [EVIDENCE.md](EVIDENCE.md) for the
@@ -69,55 +71,86 @@ indirect writes, and other tool paths remain outside complete coverage.
 ## Install the public preview from GitHub
 
 The release candidate uses the official Codex Git marketplace and does not
-overwrite ACGM for Claude Code. A repository URL by itself is not permission to
-modify user configuration. Clone the exact tag and run the read-only checks:
+overwrite ACGM for Claude Code. The user only needs to tell the Agent to install
+and enable official ACGM in the exact project with recommended defaults. That
+sentence is one authorization for the exact `standard-v1` plan; it does not
+require item-by-item approval or hand-written governance files.
+
+The Agent clones the exact tag and runs:
 
 ```bash
-git clone --branch v0.1.0-rc.4 --depth 1 \
+git clone --branch v0.2.0-rc.1 --depth 1 \
   https://github.com/johnrucnapier-sketch/ACGM-for-Codex.git
 cd ACGM-for-Codex
-python3 scripts/preflight.py --json
-python3 scripts/bootstrap.py --dry-run --json
+python3 scripts/quickstart.py --project /absolute/path/to/the/exact/project --dry-run --json
+python3 scripts/quickstart.py --project /absolute/path/to/the/exact/project \
+  --plan-digest <digest-from-dry-run> --authorize --json
 ```
 
-After reviewing the plan and explicitly authorizing the exact user-config
-mutation, run:
+You can say:
 
-```bash
-python3 scripts/bootstrap.py --authorize-install --json
-```
+> Install ACGM for Codex from the official GitHub repository in this exact
+> project with recommended defaults. Complete download, installation,
+> governance-file generation, activation, and verification automatically. Do
+> not overwrite existing project policy or migrate a legacy installation.
 
-For a one-instruction Agent handoff, explicitly name this repository and tag,
-require it to read `AGENTS.md` and `INSTALL.md`, authorize only the two fixed
-Codex plugin commands below if every preflight check matches, and require it to
-stop at Hook trust without migrating a personal install or reading Event Ledger
-data. That instruction can cover clone, preflight, install, and verification in
-one task; a bare URL cannot.
+A bare URL without an install request still permits only download and read-only
+inspection. Quickstart dry-run is machine verification, not a second approval
+ceremony. Its digest binds the official source/tag, fixed install commands,
+exact Git root and identity, existing managed-file hashes, and every proposed
+byte. Any changed fact invalidates the grant before apply.
 
-Bootstrap invokes `codex plugin marketplace add
-johnrucnapier-sketch/ACGM-for-Codex --ref v0.1.0-rc.4 --json` and then `codex
+For a fresh install, bootstrap invokes `codex plugin marketplace add
+johnrucnapier-sketch/ACGM-for-Codex --ref v0.2.0-rc.1 --json` and then `codex
 plugin add acgm-codex@acgm-codex --json`. It independently verifies the exact
 marketplace source/ref, plugin name/version/enabled state, and cached package
-bytes. A failed external mutation is reported as partial state; it is not
-described as rolled back.
+bytes. The sole automatic plugin-upgrade exception is one enabled, user-scope
+official `0.1.0-rc.2`, `0.1.0-rc.3`, or `0.1.0-rc.4` whose source, ref, policy,
+marketplace snapshot, package bytes, and sole cache entry all verify. That
+digest explicitly binds marketplace remove, exact-ref marketplace add, and
+plugin add. A failed external mutation is reported as partial/recheck state; it
+is not described as rolled back.
+If installation succeeds but the project root changes before project apply, the
+combined result reports `PROJECT_RECHECK_REQUIRED` with `partial=true` instead
+of escaping as a traceback.
 
-Then start a new discovery task, open `/hooks`, and review and trust the current
-ACGM Hook definitions. Start a second new verification task so the trusted
-`SessionStart` runs from task start; verify that heartbeat before invoking
-`$governance-bootstrap` in the target project. Existing tasks are not guaranteed
-to reload newly installed components. A Hook definition change can require a
-new trust review because Codex records trust by definition hash. Installation,
-Hook trust, a fresh-task heartbeat, and project bootstrap are separate stages.
+Quickstart then creates missing Constitution, scope, adoption-decision, and
+snapshot assets, preserves existing `AGENTS.md` and substantive governance
+policy, and replaces only byte-identical stock placeholders created by the old
+`init` flow. It activates the project and runs doctor automatically. Quickstart
+requires the exact Git root; a parent workspace stops before any project write,
+does not guess a child, and never receives project governance. Only the runtime
+Hook resolver may auto-select a unique child below an unborn parent, and only
+when every entry other than `.git` is a verified direct child repository. An
+ordinary untracked or ignored parent file stops that runtime-only selection.
 
-Legacy `acgm-codex@personal`, duplicates, another scope/source/ref, and version
-conflicts are fail-closed. Bootstrap never uninstalls, overwrites, adopts, or
-moves private `PLUGIN_DATA` / Event Ledger content. See [INSTALL.md](INSTALL.md).
+Codex Hook trust is the only required ACGM-specific post-install confirmation
+the plugin cannot perform for the user. At the next normal task boundary,
+current Codex clients may offer **Trust
+all and continue**. Use that single platform action only when the pending review
+set contains exclusively the verified ACGM definitions from this exact release;
+review any mixed or unknown Hooks individually. The first real ACGM Hook
+observed afterward records the activation heartbeat automatically; a second
+artificial "verification task" is not required. The surrounding environment may
+still show its own network, filesystem, or command-permission prompts; ACGM does
+not bypass Codex or OS security.
+
+Legacy `acgm-codex@personal`, duplicates, another scope/source/ref, unknown
+versions, and newer versions are fail-closed; the exact verified official
+RC2/RC3/RC4 path above is the only plugin-upgrade exception. Bootstrap never
+adopts, resets, or moves private `PLUGIN_DATA` / Event Ledger content. See
+[INSTALL.md](INSTALL.md).
+Unknown policy, symlinks, non-regular managed paths, substantive active drift,
+and stale plan digests also stop before automatic replacement. A state whose
+only drift is an older adapter version may be upgraded inside the same
+digest-bound authorization when its existing baseline still matches.
 
 Public installation does not add a shell wrapper to `PATH`; installed skills
 resolve the launcher inside the plugin root. `scripts/install_local.py` is only
 for maintainers exercising the old personal path with a disposable HOME.
 
-RC4 supports macOS and Linux with Python 3.10+. Windows is explicitly blocked:
+The current candidate supports macOS and Linux with Python 3.10+. Windows is
+explicitly blocked:
 the runtime still relies on POSIX `fcntl` locking, so Codex app plugin support
 on Windows is not evidence that this runtime is portable or E2E-tested there.
 
@@ -126,34 +159,39 @@ on Windows is not evidence that this runtime is portable or E2E-tested there.
 Ask Codex:
 
 ```text
-Use $governance-bootstrap to initialize ACGM governance in this repository.
+Use $governance-bootstrap to quickstart ACGM in this repository with recommended defaults.
 ```
 
 Or run:
 
 ```bash
-acgm-codex init .
-acgm-codex doctor .
+acgm-codex quickstart plan /absolute/path/to/project --json
+acgm-codex quickstart apply /absolute/path/to/project --plan-digest <digest> --authorize --json
+acgm-codex quickstart status /absolute/path/to/project --json
 ```
 
-Initialization is idempotent and never overwrites an existing Constitution or
-`AGENTS.md`. The Constitution is human-owned: Codex may draft a proposal, but
-after initialization it must not use an automated tool to write that file for
-the user. The user must complete it, along with non-placeholder scope, at least
-one decision, and one current snapshot, before activation:
+`standard-v1` is a versioned safe preset. One quickstart authorization adopts
+those exact bytes; the user does not have to type a Constitution. Existing
+substantive policy is preserved. Version-only adapter drift with an otherwise
+matching baseline is upgraded in the same authorization only from the explicit
+compatible RC2/RC3/RC4 project-adapter set; an unknown or newer state is never
+automatically downgraded. A healthy manually activated project may adopt its
+missing standard decision/snapshot while preserving the activation id. Unknown
+receipts, concurrent Git/index changes, unknown placeholders, symlinks,
+non-regular files, other active drift, and conflicting content stop automatic
+absorption. The compatible `init` / `activate` sequence remains available for
+projects that explicitly require custom policy.
 
-```bash
-acgm-codex activate .
-acgm-codex doctor .
-```
-
-Activation baselines the required files and the non-hidden files under the
-decision and snapshot directories; additions, removals, and content changes are
-reported as `DRIFTED`. Activation also resets the heartbeat acceptance time.
-Start a new Codex task, confirm the current definitions are trusted in `/hooks`,
-let `SessionStart` run, and only then run `acgm-codex doctor . --strict`. Before
-that new heartbeat, strict failure means automatic Hook operation has not yet
-been accepted as verified, not that the governance content itself is invalid.
+After apply, the project is `GOVERNED`. Until a real Hook heartbeat exists for
+the current activation, quickstart reports
+`AWAITING_PLATFORM_HOOK_ACCEPTANCE`: local setup succeeded, but the platform
+mechanism still needs its one trust boundary. After the first real Hook runs,
+`quickstart status` or strict doctor reports completion. An installed but
+uninitialized project remains `INSTALLED_NOT_BOOTSTRAPPED`; missing assets are
+never relabeled silently as `GOVERNED`.
+If a Hook runtime error occurs after a heartbeat, status reports
+`HOOK_RUNTIME_REPAIR_REQUIRED`; damaged local installation or ledger state
+reports `LOCAL_RUNTIME_REPAIR_REQUIRED`, never a misleading first-trust wait.
 
 ## Inspect activity
 

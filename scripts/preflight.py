@@ -29,17 +29,39 @@ PLUGIN_NAME = "acgm-codex"
 MARKETPLACE_NAME = "acgm-codex"
 PLUGIN_ID = f"{PLUGIN_NAME}@{MARKETPLACE_NAME}"
 LEGACY_PLUGIN_ID = f"{PLUGIN_NAME}@personal"
-VERSION = "0.1.0-rc.4"
-TAG = "v0.1.0-rc.4"
+VERSION = "0.2.0-rc.1"
+TAG = "v0.2.0-rc.1"
 REPOSITORY = "johnrucnapier-sketch/ACGM-for-Codex"
 REPOSITORY_URL = "https://github.com/johnrucnapier-sketch/ACGM-for-Codex.git"
 SOURCE_ROOT = Path(__file__).resolve().parents[1]
 MANIFEST_NAME = "PACKAGE_MANIFEST.json"
+CODEX_MARKETPLACE_METADATA = ".codex-marketplace-install.json"
+MAX_CODEX_MARKETPLACE_METADATA_BYTES = 8192
 MINIMUM_PYTHON = (3, 10)
 SUPPORTED_PLATFORMS = {"Darwin", "Linux"}
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
+RC_VERSION = re.compile(
+    r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-rc\.(0|[1-9]\d*)$"
+)
+KNOWN_OFFICIAL_UPGRADE_VERSIONS = frozenset(
+    {"0.1.0-rc.2", "0.1.0-rc.3", "0.1.0-rc.4"}
+)
+KNOWN_OFFICIAL_RELEASES = {
+    "0.1.0-rc.2": {
+        "revision": "4deb6d1695290bae8a9fdc15e8419fef48cbf808",
+        "manifest_sha256": "26385f5ad022dd3b8c3f7beda32b05769dbfd559335ce2a43c14434844ca732a",
+    },
+    "0.1.0-rc.3": {
+        "revision": "244a0e4dab1b082c9ab18cf243a507f420e763b8",
+        "manifest_sha256": "3ff678020a75a472c6fc34c9d7dcd39098055ae150604d94d58723202253bb92",
+    },
+    "0.1.0-rc.4": {
+        "revision": "06623a95df96b3ced9759e6434d096ab8c66fb5f",
+        "manifest_sha256": "227d52be85d1c6c4104a4018c5a7b4c49f536f54c9365181db3c31edad66cab3",
+    },
+}
 EXCLUDED_PARTS = {".git", ".acgm", ".venv", "__pycache__", "build", "dist"}
-EXCLUDED_NAMES = {MANIFEST_NAME, ".DS_Store"}
+EXCLUDED_NAMES = {MANIFEST_NAME, CODEX_MARKETPLACE_METADATA, ".DS_Store"}
 
 
 @dataclass(frozen=True)
@@ -203,8 +225,102 @@ def _expected_repo(value: object) -> bool:
     return _canonical_repo(value) == REPOSITORY.casefold()
 
 
+def _rc_version_order(value: object) -> tuple[int, int, int, int] | None:
+    """Return a numeric prerelease order; never compare release strings lexically."""
+
+    if not isinstance(value, str):
+        return None
+    match = RC_VERSION.fullmatch(value)
+    if match is None:
+        return None
+    return tuple(int(part) for part in match.groups())
+
+
+def _known_official_upgrade(version: object, ref: object) -> bool:
+    order = _rc_version_order(version)
+    target = _rc_version_order(VERSION)
+    return bool(
+        isinstance(version, str)
+        and version in KNOWN_OFFICIAL_UPGRADE_VERSIONS
+        and ref == f"v{version}"
+        and order is not None
+        and target is not None
+        and order < target
+    )
+
+
+def _codex_marketplace_metadata(
+    root: Path, *, expected_tag: str, expected_revision: str | None
+) -> dict[str, Any]:
+    """Verify the sole untracked metadata file created by the Codex CLI.
+
+    This file is platform-owned rather than release-owned, so it is not part of
+    ``PACKAGE_MANIFEST.json``.  It is allowed only at the marketplace checkout
+    root and only when every identity field binds it to the already verified
+    checkout revision.
+    """
+
+    errors: list[str] = []
+    path = root / CODEX_MARKETPLACE_METADATA
+    try:
+        metadata = path.lstat()
+        if not stat.S_ISREG(metadata.st_mode):
+            raise ValueError("not_regular")
+        if metadata.st_size > MAX_CODEX_MARKETPLACE_METADATA_BYTES:
+            raise ValueError("too_large")
+        raw = _regular_bytes(path)
+        payload = json.loads(raw.decode("utf-8"))
+    except FileNotFoundError:
+        return {
+            "verified": False,
+            "error_codes": ["codex_marketplace_metadata_missing"],
+        }
+    except (OSError, ValueError, UnicodeDecodeError, json.JSONDecodeError):
+        return {
+            "verified": False,
+            "error_codes": ["codex_marketplace_metadata_invalid"],
+        }
+    expected_keys = {
+        "source_type",
+        "source",
+        "ref_name",
+        "sparse_paths",
+        "revision",
+    }
+    if not isinstance(payload, dict) or set(payload) != expected_keys:
+        errors.append("codex_marketplace_metadata_shape_invalid")
+    else:
+        if payload.get("source_type") != "git" or not _expected_repo(
+            payload.get("source")
+        ):
+            errors.append("codex_marketplace_metadata_source_mismatch")
+        if payload.get("ref_name") != expected_tag:
+            errors.append("codex_marketplace_metadata_ref_mismatch")
+        if payload.get("sparse_paths") != []:
+            errors.append("codex_marketplace_metadata_sparse_paths_not_empty")
+        revision = payload.get("revision")
+        if (
+            expected_revision is None
+            or not isinstance(revision, str)
+            or revision != expected_revision
+        ):
+            errors.append("codex_marketplace_metadata_revision_mismatch")
+    return {
+        "verified": not errors,
+        "error_codes": sorted(set(errors)),
+        "revision": payload.get("revision") if isinstance(payload, dict) else None,
+        "sha256": hashlib.sha256(raw).hexdigest(),
+    }
+
+
 def _manifest_inventory(
-    root: Path, *, exact_git_inventory: bool, exact_filesystem_inventory: bool
+    root: Path,
+    *,
+    exact_git_inventory: bool,
+    exact_filesystem_inventory: bool,
+    allow_codex_marketplace_metadata: bool = False,
+    expected_version: str = VERSION,
+    expected_tag: str = TAG,
 ) -> tuple[bool, list[str], dict[str, str] | None, bytes | None]:
     errors: list[str] = []
     try:
@@ -214,7 +330,7 @@ def _manifest_inventory(
         return False, ["package_manifest_missing_or_invalid"], None, None
     if not isinstance(payload, dict) or payload.get("schema_version") != 1:
         return False, ["package_manifest_schema_invalid"], None, manifest_bytes
-    if payload.get("version") != VERSION:
+    if payload.get("version") != expected_version:
         errors.append("package_manifest_version_mismatch")
     raw_files = payload.get("files")
     if not isinstance(raw_files, dict) or not raw_files:
@@ -250,7 +366,7 @@ def _manifest_inventory(
                 "-r",
                 "-z",
                 "--name-only",
-                f"refs/tags/{TAG}^{{commit}}",
+                f"refs/tags/{expected_tag}^{{commit}}",
             ],
             root,
             safe_env,
@@ -274,7 +390,7 @@ def _manifest_inventory(
                 str(root),
                 "cat-file",
                 "blob",
-                f"refs/tags/{TAG}^{{commit}}:{MANIFEST_NAME}",
+                f"refs/tags/{expected_tag}^{{commit}}:{MANIFEST_NAME}",
             ],
             root,
             safe_env,
@@ -285,29 +401,146 @@ def _manifest_inventory(
         elif tagged_manifest.stdout.encode("utf-8") != manifest_bytes:
             errors.append("package_manifest_not_exact_release_tag")
     if exact_filesystem_inventory:
+        codex_metadata_verified = False
+        codex_metadata_sha256: str | None = None
+        codex_metadata_revision: str | None = None
+        if allow_codex_marketplace_metadata:
+            safe_env = git_environment()
+            head = run_command(
+                [
+                    "git",
+                    "--no-replace-objects",
+                    "-C",
+                    str(root),
+                    "rev-parse",
+                    "HEAD",
+                ],
+                root,
+                safe_env,
+                10,
+            )
+            tag = run_command(
+                [
+                    "git",
+                    "--no-replace-objects",
+                    "-C",
+                    str(root),
+                    "rev-parse",
+                    f"refs/tags/{expected_tag}^{{commit}}",
+                ],
+                root,
+                safe_env,
+                10,
+            )
+            revision = head.stdout.strip() if head.returncode == 0 else None
+            metadata_check = _codex_marketplace_metadata(
+                root,
+                expected_tag=expected_tag,
+                expected_revision=revision
+                if tag.returncode == 0 and revision == tag.stdout.strip()
+                else None,
+            )
+            codex_metadata_verified = bool(metadata_check["verified"])
+            codex_metadata_sha256 = metadata_check.get("sha256")
+            codex_metadata_revision = revision
+            errors.extend(metadata_check["error_codes"])
         actual: set[str] = set()
+        expected_directories = {
+            PurePosixPath(*PurePosixPath(name).parts[:depth]).as_posix()
+            for name in files
+            for depth in range(1, len(PurePosixPath(name).parts))
+        }
+
+        def inspect_directory(directory: Path, relative_parent: PurePosixPath) -> None:
+            try:
+                with os.scandir(directory) as iterator:
+                    entries = sorted(iterator, key=lambda item: item.name)
+            except OSError:
+                errors.append("package_filesystem_inventory_unavailable")
+                return
+            for entry in entries:
+                relative_path = relative_parent / entry.name
+                relative = relative_path.as_posix()
+                try:
+                    metadata = entry.stat(follow_symlinks=False)
+                except OSError:
+                    errors.append("package_filesystem_inventory_unavailable")
+                    continue
+                if stat.S_ISLNK(metadata.st_mode):
+                    errors.append("package_filesystem_symlink_not_allowed")
+                    continue
+
+                # A verified marketplace snapshot, and some verified installed
+                # caches, are full Git checkouts. Their real .git directory is
+                # permitted only when the caller also requires exact Git proof.
+                if relative == ".git" and exact_git_inventory:
+                    if not stat.S_ISDIR(metadata.st_mode):
+                        errors.append("package_filesystem_git_metadata_unsafe")
+                    continue
+
+                if relative == CODEX_MARKETPLACE_METADATA:
+                    if not allow_codex_marketplace_metadata:
+                        errors.append("package_filesystem_excluded_path_not_allowed")
+                    elif not stat.S_ISREG(metadata.st_mode):
+                        errors.append("codex_marketplace_metadata_invalid")
+                    else:
+                        current_metadata = _codex_marketplace_metadata(
+                            root,
+                            expected_tag=expected_tag,
+                            expected_revision=codex_metadata_revision,
+                        )
+                        if (
+                            not codex_metadata_verified
+                            or not current_metadata["verified"]
+                            or current_metadata.get("sha256")
+                            != codex_metadata_sha256
+                        ):
+                            errors.append("codex_marketplace_metadata_invalid")
+                    continue
+
+                if relative == MANIFEST_NAME:
+                    if not stat.S_ISREG(metadata.st_mode):
+                        errors.append("package_file_missing_or_unsafe")
+                    continue
+
+                if not _included(relative):
+                    errors.append("package_filesystem_excluded_path_not_allowed")
+                    continue
+                if stat.S_ISREG(metadata.st_mode):
+                    actual.add(relative)
+                    continue
+                if stat.S_ISDIR(metadata.st_mode):
+                    if relative not in expected_directories:
+                        errors.append("package_filesystem_unlisted_directory_not_allowed")
+                        continue
+                    inspect_directory(Path(entry.path), relative_path)
+                    continue
+                errors.append("package_filesystem_special_file_not_allowed")
+
         try:
-            paths = list(root.rglob("*"))
+            root_metadata = root.lstat()
         except OSError:
             errors.append("package_filesystem_inventory_unavailable")
-            paths = []
-        for path in paths:
-            try:
-                relative = path.relative_to(root).as_posix()
-                if not _included(relative):
-                    continue
-                metadata = path.lstat()
-            except (OSError, ValueError):
-                errors.append("package_filesystem_inventory_unavailable")
-                continue
-            if stat.S_ISLNK(metadata.st_mode):
-                errors.append("package_filesystem_symlink_not_allowed")
-            elif stat.S_ISREG(metadata.st_mode):
-                actual.add(relative)
-            elif not stat.S_ISDIR(metadata.st_mode):
-                errors.append("package_filesystem_special_file_not_allowed")
+        else:
+            if stat.S_ISLNK(root_metadata.st_mode) or not stat.S_ISDIR(
+                root_metadata.st_mode
+            ):
+                errors.append("package_filesystem_root_unsafe")
+            else:
+                inspect_directory(root, PurePosixPath())
         if actual != set(files):
             errors.append("package_manifest_filesystem_inventory_mismatch")
+        if allow_codex_marketplace_metadata:
+            final_metadata = _codex_marketplace_metadata(
+                root,
+                expected_tag=expected_tag,
+                expected_revision=codex_metadata_revision,
+            )
+            if (
+                not final_metadata["verified"]
+                or final_metadata.get("sha256") != codex_metadata_sha256
+            ):
+                errors.append("codex_marketplace_metadata_changed_during_verification")
     return not errors, sorted(set(errors)), files, manifest_bytes
 
 
@@ -316,11 +549,17 @@ def verify_package(
     *,
     exact_git_inventory: bool = False,
     exact_filesystem_inventory: bool = False,
+    allow_codex_marketplace_metadata: bool = False,
+    expected_version: str = VERSION,
+    expected_tag: str = TAG,
 ) -> dict[str, Any]:
     ok, errors, files, manifest_bytes = _manifest_inventory(
         root,
         exact_git_inventory=exact_git_inventory,
         exact_filesystem_inventory=exact_filesystem_inventory,
+        allow_codex_marketplace_metadata=allow_codex_marketplace_metadata,
+        expected_version=expected_version,
+        expected_tag=expected_tag,
     )
     return {
         "verified": ok,
@@ -332,7 +571,9 @@ def verify_package(
     }
 
 
-def verify_release_contract(root: Path) -> dict[str, Any]:
+def verify_release_contract(
+    root: Path, *, expected_version: str = VERSION, expected_tag: str = TAG
+) -> dict[str, Any]:
     """Verify identities that a hash-consistent but wrong package could violate."""
 
     errors: list[str] = []
@@ -340,14 +581,14 @@ def verify_release_contract(root: Path) -> dict[str, Any]:
         version = _regular_bytes(root / "VERSION").decode("utf-8").strip()
     except (OSError, ValueError, UnicodeDecodeError):
         version = None
-    if version != VERSION:
+    if version != expected_version:
         errors.append("version_file_mismatch")
     try:
         plugin = _read_json(root / ".codex-plugin" / "plugin.json")
     except (OSError, ValueError, UnicodeDecodeError, json.JSONDecodeError):
         plugin = {}
         errors.append("plugin_manifest_missing_or_invalid")
-    if plugin.get("name") != PLUGIN_NAME or plugin.get("version") != VERSION:
+    if plugin.get("name") != PLUGIN_NAME or plugin.get("version") != expected_version:
         errors.append("plugin_manifest_identity_or_version_mismatch")
     try:
         marketplace = _read_json(root / ".agents" / "plugins" / "marketplace.json")
@@ -363,7 +604,7 @@ def verify_release_contract(root: Path) -> dict[str, Any]:
         or entry.get("name") != PLUGIN_NAME
         or source.get("source") != "url"
         or not _expected_repo(source.get("url"))
-        or source.get("ref") != TAG
+        or source.get("ref") != expected_tag
         or policy.get("installation") != "AVAILABLE"
         or policy.get("authentication") != "ON_INSTALL"
         or not isinstance(entry.get("category"), str)
@@ -373,7 +614,14 @@ def verify_release_contract(root: Path) -> dict[str, Any]:
     return {"verified": not errors, "error_codes": sorted(set(errors))}
 
 
-def _git_source(root: Path, env: dict[str, str], runner: Runner) -> dict[str, Any]:
+def _git_source(
+    root: Path,
+    env: dict[str, str],
+    runner: Runner,
+    *,
+    expected_tag: str = TAG,
+    require_codex_marketplace_metadata: bool = False,
+) -> dict[str, Any]:
     facts: dict[str, Any] = {"verified": False, "error_codes": []}
     safe_env = git_environment(env)
     head = runner(
@@ -389,7 +637,7 @@ def _git_source(root: Path, env: dict[str, str], runner: Runner) -> dict[str, An
             "-C",
             str(root),
             "rev-parse",
-            f"refs/tags/{TAG}^{{commit}}",
+            f"refs/tags/{expected_tag}^{{commit}}",
         ],
         root,
         safe_env,
@@ -434,9 +682,26 @@ def _git_source(root: Path, env: dict[str, str], runner: Runner) -> dict[str, An
         facts["error_codes"].append("release_tag_missing")
     if head.returncode == 0 and tag.returncode == 0 and head.stdout.strip() != tag.stdout.strip():
         facts["error_codes"].append("head_not_exact_release_tag")
+    head_value = head.stdout.strip() if head.returncode == 0 else None
+    tag_value = tag.stdout.strip() if tag.returncode == 0 else None
+    metadata_check: dict[str, Any] | None = None
+    status_allowed = status.returncode == 0 and not bool(status.stdout.strip())
+    if require_codex_marketplace_metadata:
+        metadata_check = _codex_marketplace_metadata(
+            root,
+            expected_tag=expected_tag,
+            expected_revision=head_value if head_value == tag_value else None,
+        )
+        facts["error_codes"].extend(metadata_check["error_codes"])
+        status_allowed = bool(
+            status.returncode == 0
+            and metadata_check["verified"]
+            and status.stdout.splitlines()
+            == [f"?? {CODEX_MARKETPLACE_METADATA}"]
+        )
     if status.returncode != 0:
         facts["error_codes"].append("git_status_unavailable")
-    elif status.stdout.strip():
+    elif not status_allowed:
         facts["error_codes"].append("checkout_not_clean")
     raw_origins = [line.strip() for line in remote.stdout.splitlines() if line.strip()]
     origin_matches = (
@@ -447,10 +712,11 @@ def _git_source(root: Path, env: dict[str, str], runner: Runner) -> dict[str, An
     )
     if not origin_matches:
         facts["error_codes"].append("origin_not_expected_repository")
-    facts["head"] = head.stdout.strip() if head.returncode == 0 else None
-    facts["tag"] = TAG
-    facts["clean"] = status.returncode == 0 and not bool(status.stdout.strip())
+    facts["head"] = head_value
+    facts["tag"] = expected_tag
+    facts["clean"] = status_allowed
     facts["origin_matches"] = origin_matches
+    facts["codex_marketplace_metadata"] = metadata_check
     facts["verified"] = not facts["error_codes"]
     return facts
 
@@ -533,7 +799,9 @@ def _toml_multiline_after_line(line: str, active: str | None) -> str | None:
     return None
 
 
-def _marketplace_config_evidence(codex_home: Path) -> dict[str, Any]:
+def _marketplace_config_evidence(
+    codex_home: Path, *, expected_ref: str = TAG
+) -> dict[str, Any]:
     """Read only the simple table shape currently emitted by the Codex CLI.
 
     Python 3.10 has no stdlib TOML parser.  This deliberately narrow parser
@@ -593,7 +861,7 @@ def _marketplace_config_evidence(codex_home: Path) -> dict[str, Any]:
     source_matches = (
         values.get("source_type") == "git" and _expected_repo(values.get("source"))
     )
-    ref_matches = values.get("ref") == TAG
+    ref_matches = values.get("ref") == expected_ref
     if not source_matches or not ref_matches:
         errors.append("marketplace_config_source_or_ref_conflict")
     return {
@@ -610,8 +878,11 @@ def _marketplace_runtime_evidence(
     source_root: Path,
     env: dict[str, str],
     runner: Runner,
+    expected_version: str = VERSION,
+    expected_ref: str = TAG,
+    require_source_manifest_match: bool = True,
 ) -> dict[str, Any]:
-    """Verify the omitted Git ref from config plus the exact cached checkout."""
+    """Verify config plus the exact cached checkout, independent of CLI claims."""
 
     errors: list[str] = []
     codex_home = _codex_home(env)
@@ -628,28 +899,47 @@ def _marketplace_runtime_evidence(
     if not root_matches:
         errors.append("marketplace_snapshot_root_missing_or_unexpected")
 
-    config = _marketplace_config_evidence(codex_home)
+    config = _marketplace_config_evidence(codex_home, expected_ref=expected_ref)
     errors.extend(config["error_codes"])
     if root_matches:
-        git = _git_source(cache_root, env, runner)
+        git = _git_source(
+            cache_root,
+            env,
+            runner,
+            expected_tag=expected_ref,
+            require_codex_marketplace_metadata=True,
+        )
         package = verify_package(
             cache_root,
             exact_git_inventory=True,
             exact_filesystem_inventory=True,
+            allow_codex_marketplace_metadata=True,
+            expected_version=expected_version,
+            expected_tag=expected_ref,
         )
-        release_contract = verify_release_contract(cache_root)
+        release_contract = verify_release_contract(
+            cache_root,
+            expected_version=expected_version,
+            expected_tag=expected_ref,
+        )
         errors.extend(f"snapshot_{code}" for code in git["error_codes"])
         errors.extend(f"snapshot_{code}" for code in package["error_codes"])
         errors.extend(
             f"snapshot_{code}" for code in release_contract["error_codes"]
         )
+        known_release = KNOWN_OFFICIAL_RELEASES.get(expected_version)
+        if known_release is not None:
+            if git.get("head") != known_release["revision"]:
+                errors.append("snapshot_known_official_revision_mismatch")
+            if package.get("manifest_sha256") != known_release["manifest_sha256"]:
+                errors.append("snapshot_known_official_manifest_mismatch")
         try:
             same_manifest = _regular_bytes(source_root / MANIFEST_NAME) == _regular_bytes(
                 cache_root / MANIFEST_NAME
             )
         except (OSError, ValueError):
             same_manifest = False
-        if not same_manifest:
+        if require_source_manifest_match and not same_manifest:
             errors.append("marketplace_snapshot_manifest_differs_from_source")
     else:
         git = {"verified": False}
@@ -662,29 +952,74 @@ def _marketplace_runtime_evidence(
         "config": config,
         "root_matches": root_matches,
         "git_verified": bool(git.get("verified")),
+        "codex_marketplace_metadata_sha256": (
+            git.get("codex_marketplace_metadata", {}).get("sha256")
+            if isinstance(git.get("codex_marketplace_metadata"), dict)
+            else None
+        ),
         "package_verified": bool(package.get("verified")),
         "release_contract_verified": bool(release_contract.get("verified")),
-        "manifest_matches_source": same_manifest,
+        "manifest_matches_source": same_manifest
+        if require_source_manifest_match
+        else None,
+        "manifest_sha256": package.get("manifest_sha256"),
+        "expected_version": expected_version,
+        "expected_ref": expected_ref,
     }
 
 
-def _marketplace_exact(item: dict[str, Any], runtime_verified: bool) -> bool:
-    if not _marketplace_identity_exact(item):
+def _marketplace_exact(
+    item: dict[str, Any], runtime_verified: bool, *, expected_ref: str = TAG
+) -> bool:
+    if not _marketplace_identity_exact(item) or not runtime_verified:
         return False
     reported_ref = _marketplace_reported_ref(item)
-    if reported_ref is not None:
-        return reported_ref == TAG
-    return runtime_verified
+    return reported_ref is None or reported_ref == expected_ref
 
 
-def _plugin_source_exact(item: dict[str, Any]) -> bool:
+def _plugin_source_exact(item: dict[str, Any], *, expected_ref: str = TAG) -> bool:
     source = item.get("source")
     return bool(
         isinstance(source, dict)
         and source.get("source") in {"git", "url"}
         and _expected_repo(source.get("url"))
-        and source.get("ref") == TAG
+        and source.get("ref") == expected_ref
     )
+
+
+def _plugin_cache_inventory(
+    codex_home: Path, *, expected_version: str
+) -> dict[str, Any]:
+    """Verify that the installed plugin has one regular version directory only."""
+
+    root = codex_home / "plugins" / "cache" / MARKETPLACE_NAME / PLUGIN_NAME
+    try:
+        entries = list(root.iterdir())
+    except OSError:
+        return {
+            "verified": False,
+            "versions": [],
+            "error_codes": ["installed_cache_inventory_unavailable"],
+        }
+    versions: list[str] = []
+    errors: list[str] = []
+    for entry in entries:
+        try:
+            metadata = entry.lstat()
+        except OSError:
+            errors.append("installed_cache_inventory_unavailable")
+            continue
+        if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
+            errors.append("installed_cache_version_entry_unsafe")
+            continue
+        versions.append(entry.name)
+    if sorted(versions) != [expected_version]:
+        errors.append("installed_cache_version_set_mismatch")
+    return {
+        "verified": not errors,
+        "versions": sorted(versions),
+        "error_codes": sorted(set(errors)),
+    }
 
 
 def inspect_codex_state(
@@ -739,25 +1074,6 @@ def inspect_codex_state(
             "plugin": "UNKNOWN",
             "cache_verified": False,
         }
-    marketplace_matches = [
-        item
-        for item in marketplaces
-        if isinstance(item, dict) and item.get("name") == MARKETPLACE_NAME
-    ]
-    marketplace_evidence: dict[str, Any] | None = None
-    runtime_verified = False
-    if (
-        len(marketplace_matches) == 1
-        and _marketplace_identity_exact(marketplace_matches[0])
-        and _marketplace_reported_ref(marketplace_matches[0]) is None
-    ):
-        marketplace_evidence = _marketplace_runtime_evidence(
-            marketplace_matches[0],
-            source_root=source_root,
-            env=env,
-            runner=runner,
-        )
-        runtime_verified = bool(marketplace_evidence["verified"])
     plugin_matches = [
         item
         for item in [*installed, *available]
@@ -770,11 +1086,79 @@ def inspect_codex_state(
         for item in installed
         if item in plugin_matches
     ]
-    errors: list[str] = []
-    if marketplace_matches and all(
-        _marketplace_exact(item, runtime_verified) for item in marketplace_matches
+    marketplace_matches = [
+        item
+        for item in marketplaces
+        if isinstance(item, dict) and item.get("name") == MARKETPLACE_NAME
+    ]
+    exact_installed = [item for item in installed_matches if item.get("pluginId") == PLUGIN_ID]
+    exact_available = [
+        item for item in available if item.get("pluginId") == PLUGIN_ID
+    ]
+    installed_item = exact_installed[0] if len(exact_installed) == 1 else None
+    available_item = exact_available[0] if len(exact_available) == 1 else None
+    installed_version = installed_item.get("version") if installed_item else None
+    installed_ref = (
+        installed_item.get("source", {}).get("ref")
+        if installed_item and isinstance(installed_item.get("source"), dict)
+        else None
+    )
+    old_ref = (
+        installed_ref
+        if _known_official_upgrade(installed_version, installed_ref)
+        else None
+    )
+
+    marketplace_evidence: dict[str, Any] | None = None
+    target_runtime_verified = False
+    old_runtime_verified = False
+    marketplace_ref_omitted = bool(
+        len(marketplace_matches) == 1
+        and _marketplace_reported_ref(marketplace_matches[0]) is None
+    )
+    if len(marketplace_matches) == 1 and _marketplace_identity_exact(
+        marketplace_matches[0]
     ):
+        evidence_version = installed_version if old_ref else VERSION
+        evidence_ref = old_ref or TAG
+        marketplace_evidence = _marketplace_runtime_evidence(
+            marketplace_matches[0],
+            source_root=source_root,
+            env=env,
+            runner=runner,
+            expected_version=str(evidence_version),
+            expected_ref=evidence_ref,
+            require_source_manifest_match=old_ref is None,
+        )
+        if old_ref:
+            old_runtime_verified = bool(marketplace_evidence["verified"])
+        else:
+            target_runtime_verified = bool(marketplace_evidence["verified"])
+
+    errors: list[str] = []
+    target_marketplace_exact = bool(
+        marketplace_matches
+        and all(
+            _marketplace_exact(
+                item, target_runtime_verified, expected_ref=TAG
+            )
+            for item in marketplace_matches
+        )
+    )
+    old_marketplace_exact = bool(
+        old_ref
+        and marketplace_matches
+        and all(
+            _marketplace_exact(
+                item, old_runtime_verified, expected_ref=old_ref
+            )
+            for item in marketplace_matches
+        )
+    )
+    if target_marketplace_exact:
         marketplace_state = "EXACT"
+    elif old_marketplace_exact:
+        marketplace_state = "OFFICIAL_OLD"
     elif marketplace_matches:
         marketplace_state = "CONFLICT"
     else:
@@ -784,41 +1168,58 @@ def inspect_codex_state(
         errors.append("legacy_personal_install_requires_manual_migration")
     if len(marketplace_matches) > 1:
         errors.append("duplicate_marketplace_entries")
-    if marketplace_matches and not all(
-        _marketplace_exact(item, runtime_verified) for item in marketplace_matches
-    ):
+    if marketplace_matches and marketplace_state == "CONFLICT":
         errors.append("marketplace_source_or_ref_conflict")
     foreign_plugins = [
         item for item in plugin_matches if item.get("pluginId") != PLUGIN_ID
     ]
     if foreign_plugins:
         errors.append("duplicate_or_foreign_plugin_install")
-    exact_installed = [item for item in installed_matches if item.get("pluginId") == PLUGIN_ID]
-    exact_available = [
-        item
-        for item in available
-        if item.get("pluginId") == PLUGIN_ID
-    ]
     if len(exact_installed) > 1:
         errors.append("duplicate_exact_plugin_install")
     if len(exact_available) > 1:
         errors.append("duplicate_exact_available_plugin")
-    installed_item = exact_installed[0] if len(exact_installed) == 1 else None
-    available_item = exact_available[0] if len(exact_available) == 1 else None
-    if installed_item is not None and (
-        installed_item.get("name") != PLUGIN_NAME
-        or installed_item.get("marketplaceName") != MARKETPLACE_NAME
-        or installed_item.get("version") != VERSION
-        or installed_item.get("installed") is not True
-        or installed_item.get("enabled") is not True
-        or installed_item.get("installPolicy") != "AVAILABLE"
-        or installed_item.get("authPolicy") != "ON_INSTALL"
-        or installed_item.get("scope") not in {None, "user"}
-        or not _plugin_source_exact(installed_item)
+    if installed_item is not None and exact_available:
+        errors.append("installed_and_available_plugin_duplicate")
+
+    def installed_contract(expected_version: str, expected_ref: str) -> bool:
+        return bool(
+            installed_item is not None
+            and installed_item.get("name") == PLUGIN_NAME
+            and installed_item.get("marketplaceName") == MARKETPLACE_NAME
+            and installed_item.get("version") == expected_version
+            and installed_item.get("installed") is True
+            and installed_item.get("enabled") is True
+            and installed_item.get("installPolicy") == "AVAILABLE"
+            and installed_item.get("authPolicy") == "ON_INSTALL"
+            and installed_item.get("scope") in {None, "user"}
+            and _plugin_source_exact(installed_item, expected_ref=expected_ref)
+        )
+
+    current_installed_contract = installed_contract(VERSION, TAG)
+    old_installed_contract = bool(
+        isinstance(installed_version, str)
+        and isinstance(old_ref, str)
+        and installed_contract(installed_version, old_ref)
+    )
+    official_upgrade_base = bool(
+        old_installed_contract
+        and old_marketplace_exact
+        and len(exact_installed) == 1
+        and not exact_available
+        and not foreign_plugins
+        and len(marketplace_matches) == 1
+    )
+    if installed_item is not None and not (
+        current_installed_contract or official_upgrade_base
     ):
         errors.append("installed_plugin_identity_version_or_source_conflict")
-    if installed_item is not None and marketplace_state != "EXACT":
+    if installed_item is not None and not (
+        (current_installed_contract and marketplace_state == "EXACT")
+        or (official_upgrade_base and marketplace_state == "OFFICIAL_OLD")
+    ):
         errors.append("installed_plugin_marketplace_missing_or_not_exact")
+
     available_item_exact = bool(
         available_item is not None
         and available_item.get("name") == PLUGIN_NAME
@@ -828,7 +1229,8 @@ def inspect_codex_state(
             or (
                 "version" in available_item
                 and available_item["version"] is None
-                and runtime_verified
+                and target_runtime_verified
+                and marketplace_ref_omitted
             )
         )
         and available_item.get("installed") is False
@@ -840,7 +1242,9 @@ def inspect_codex_state(
     if available_item is not None and not available_item_exact:
         errors.append("available_plugin_identity_version_or_source_conflict")
     if marketplace_state == "EXACT" and installed_item is None:
-        if available_item is None and not runtime_verified:
+        if available_item is None and not (
+            target_runtime_verified and marketplace_ref_omitted
+        ):
             errors.append("marketplace_expected_plugin_missing")
         elif not available_item_exact:
             if available_item is not None:
@@ -848,31 +1252,114 @@ def inspect_codex_state(
 
     cache_verified = False
     cache_check: dict[str, Any] | None = None
+    official_upgrade_ready = False
     if installed_item is not None and not errors:
         codex_home = _codex_home(env)
-        cache = codex_home / "plugins" / "cache" / MARKETPLACE_NAME / PLUGIN_NAME / VERSION
-        cache_check = verify_package(
+        cache_version = str(installed_version)
+        cache_ref = old_ref or TAG
+        cache = codex_home / "plugins" / "cache" / MARKETPLACE_NAME / PLUGIN_NAME / cache_version
+        cache_git_present = False
+        cache_git_errors: list[str] = []
+        cache_git_check: dict[str, Any] | None = None
+        try:
+            cache_git_metadata = (cache / ".git").lstat()
+        except FileNotFoundError:
+            pass
+        except OSError:
+            cache_git_errors.append("installed_cache_git_metadata_unavailable")
+        else:
+            cache_git_present = True
+            if stat.S_ISLNK(cache_git_metadata.st_mode) or not stat.S_ISDIR(
+                cache_git_metadata.st_mode
+            ):
+                cache_git_errors.append("installed_cache_git_metadata_unsafe")
+            else:
+                cache_git_check = _git_source(
+                    cache,
+                    env,
+                    runner,
+                    expected_tag=cache_ref,
+                )
+                cache_git_errors.extend(
+                    f"installed_cache_{code}"
+                    for code in cache_git_check["error_codes"]
+                )
+        package_check = verify_package(
             cache,
-            exact_git_inventory=False,
+            exact_git_inventory=cache_git_present,
             exact_filesystem_inventory=True,
+            expected_version=cache_version,
+            expected_tag=cache_ref,
+        )
+        release_check = verify_release_contract(
+            cache,
+            expected_version=cache_version,
+            expected_tag=cache_ref,
+        )
+        inventory_check = _plugin_cache_inventory(
+            codex_home, expected_version=cache_version
         )
         try:
-            source_manifest = _regular_bytes(source_root / MANIFEST_NAME)
             cache_manifest = _regular_bytes(cache / MANIFEST_NAME)
+            source_manifest = _regular_bytes(source_root / MANIFEST_NAME)
+            marketplace_manifest = _regular_bytes(
+                codex_home
+                / ".tmp"
+                / "marketplaces"
+                / MARKETPLACE_NAME
+                / MANIFEST_NAME
+            )
             same_manifest = source_manifest == cache_manifest
+            same_marketplace_manifest = marketplace_manifest == cache_manifest
         except (OSError, ValueError):
             same_manifest = False
-        cache_verified = bool(cache_check["verified"] and same_manifest)
+            same_marketplace_manifest = False
+        cache_errors = [
+            *cache_git_errors,
+            *package_check["error_codes"],
+            *release_check["error_codes"],
+            *inventory_check["error_codes"],
+        ]
+        if current_installed_contract and not same_manifest:
+            cache_errors.append("installed_cache_manifest_differs_from_source")
+        if official_upgrade_base and not same_marketplace_manifest:
+            cache_errors.append(
+                "installed_cache_manifest_differs_from_marketplace_snapshot"
+            )
+        cache_check = {
+            **package_check,
+            "verified": not cache_errors,
+            "error_codes": sorted(set(cache_errors)),
+            "release_contract": release_check,
+            "inventory": inventory_check,
+            "git": cache_git_check,
+            "git_checkout_present": cache_git_present,
+            "manifest_matches_source": same_manifest
+            if current_installed_contract
+            else None,
+            "manifest_matches_marketplace_snapshot": same_marketplace_manifest
+            if official_upgrade_base
+            else None,
+        }
+        cache_verified = bool(cache_check["verified"])
         if not cache_verified:
-            errors.append("installed_cache_bytes_unverified")
+            errors.append(
+                "official_upgrade_cache_unverified"
+                if official_upgrade_base
+                else "installed_cache_bytes_unverified"
+            )
+        elif official_upgrade_base:
+            official_upgrade_ready = True
 
-    if installed_item is not None and not errors:
+    if official_upgrade_ready and not errors:
+        plugin_state = "INSTALLED_ENABLED_OFFICIAL_OLD"
+    elif installed_item is not None and not errors:
         plugin_state = "INSTALLED_ENABLED_EXACT"
     elif installed_item is not None:
         plugin_state = "CONFLICT_OR_PARTIAL"
     elif plugin_matches:
         plugin_state = "AVAILABLE_EXACT" if available_item_exact and not errors else "CONFLICT"
-    elif marketplace_state == "EXACT" and runtime_verified:
+    elif marketplace_state == "EXACT" and target_runtime_verified:
         plugin_state = "AVAILABLE_NOT_ENUMERATED"
     else:
         plugin_state = "ABSENT"
@@ -885,10 +1372,57 @@ def inspect_codex_state(
         "cache_check": cache_check,
         "legacy_personal_present": legacy,
         "marketplace_runtime_evidence": marketplace_evidence,
+        "official_upgrade": {
+            "eligible": official_upgrade_ready and not errors,
+            "from_version": installed_version if official_upgrade_ready else None,
+            "from_ref": old_ref if official_upgrade_ready else None,
+            "to_version": VERSION,
+            "to_ref": TAG,
+            "scope": installed_item.get("scope", "user")
+            if official_upgrade_ready and installed_item is not None
+            else None,
+        },
     }
 
 
 def _actions(status: str, hook_hash: str | None) -> list[dict[str, Any]]:
+    if status == "READY_FOR_OFFICIAL_UPGRADE":
+        return [
+            {
+                "id": "remove_known_old_official_marketplace",
+                "argv": [
+                    "codex",
+                    "plugin",
+                    "marketplace",
+                    "remove",
+                    MARKETPLACE_NAME,
+                    "--json",
+                ],
+                "mutates_user_config": True,
+                "requires_explicit_authorization": True,
+            },
+            {
+                "id": "add_exact_git_marketplace",
+                "argv": [
+                    "codex",
+                    "plugin",
+                    "marketplace",
+                    "add",
+                    REPOSITORY,
+                    "--ref",
+                    TAG,
+                    "--json",
+                ],
+                "mutates_user_config": True,
+                "requires_explicit_authorization": True,
+            },
+            {
+                "id": "install_exact_plugin",
+                "argv": ["codex", "plugin", "add", PLUGIN_ID, "--json"],
+                "mutates_user_config": True,
+                "requires_explicit_authorization": True,
+            },
+        ]
     if status == "READY_FOR_INSTALL":
         return [
             {
@@ -935,12 +1469,6 @@ def _actions(status: str, hook_hash: str | None) -> list[dict[str, Any]]:
                 "instruction": f"Open /hooks and review the exact hooks/hooks.json SHA-256: {hook_hash}",
                 "mutates_user_config": True,
                 "requires_explicit_authorization": True,
-            },
-            {
-                "id": "start_verification_task",
-                "instruction": "After trusting the definition, start a second new Codex verification task so trusted SessionStart runs from task start.",
-                "mutates_user_config": False,
-                "requires_explicit_authorization": False,
             },
         ]
     if status == "MIGRATION_REQUIRED":
@@ -989,6 +1517,12 @@ def evaluate(
         "plugin_list": run_codex_control(
             ["codex", "plugin", "list", "--help"], environment, runner, 10
         ),
+        "marketplace_remove": run_codex_control(
+            ["codex", "plugin", "marketplace", "remove", "--help"],
+            environment,
+            runner,
+            10,
+        ),
     }
     if any(item.returncode != 0 or item.timed_out for item in help_probes.values()):
         errors.append("codex_plugin_cli_unavailable")
@@ -997,6 +1531,7 @@ def evaluate(
         and "--json" in help_probes["marketplace_add"].stdout
         and "--json" in help_probes["plugin_add"].stdout
         and "--available" in help_probes["plugin_list"].stdout
+        and "--json" in help_probes["marketplace_remove"].stdout
     ):
         errors.append("codex_plugin_cli_contract_unsupported")
 
@@ -1033,6 +1568,7 @@ def evaluate(
         "duplicate_exact_plugin_install",
         "installed_plugin_identity_version_or_source_conflict",
         "installed_plugin_marketplace_missing_or_not_exact",
+        "official_upgrade_cache_unverified",
     }
     unique_errors = sorted(set(errors))
     hard_errors = [code for code in unique_errors if code not in conflict_codes]
@@ -1040,6 +1576,8 @@ def evaluate(
         status = "BLOCKED"
     elif any(code in conflict_codes for code in unique_errors):
         status = "MIGRATION_REQUIRED"
+    elif codex_state.get("official_upgrade", {}).get("eligible"):
+        status = "READY_FOR_OFFICIAL_UPGRADE"
     elif codex_state["plugin"] == "INSTALLED_ENABLED_EXACT" and codex_state["cache_verified"]:
         status = "INSTALLED_ENABLED_PENDING_HOOK_TRUST"
     elif codex_state["marketplace"] == "EXACT":
@@ -1062,8 +1600,9 @@ def evaluate(
         "installed_enabled": codex_state["plugin"],
         "package_bytes": "VERIFIED" if codex_state["cache_verified"] else "NOT_VERIFIED",
         "hook_trust": "DISCOVERY_TASK_USER_REVIEW_REQUIRED" if status == "INSTALLED_ENABLED_PENDING_HOOK_TRUST" else "NOT_REACHED",
-        "heartbeat": "SECOND_NEW_TASK_AFTER_TRUST_REQUIRED" if status == "INSTALLED_ENABLED_PENDING_HOOK_TRUST" else "NOT_REACHED",
-        "project_bootstrap": "EXPLICIT_TARGET_AND_SKILL_REQUIRED",
+        "heartbeat": "FIRST_TRUSTED_HOOK_AUTO_COMPLETES" if status == "INSTALLED_ENABLED_PENDING_HOOK_TRUST" else "NOT_REACHED",
+        "project_bootstrap": "ONE_CONSENT_QUICKSTART_EXACT_TARGET",
+        "official_upgrade": codex_state.get("official_upgrade"),
     }
     actions = _actions(status, hook_hash)
     return {
@@ -1071,6 +1610,7 @@ def evaluate(
         "ok": status in {
             "READY_FOR_INSTALL",
             "READY_FOR_PLUGIN_ADD",
+            "READY_FOR_OFFICIAL_UPGRADE",
             "INSTALLED_ENABLED_PENDING_HOOK_TRUST",
         },
         "status": status,

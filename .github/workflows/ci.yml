@@ -22,6 +22,8 @@ jobs:
           python-version: ${{ matrix.python }}
       - name: Unit and runtime contracts
         run: python -W error::ResourceWarning -m unittest discover -s tests -p "test_*.py" -v
+      - name: One-consent quickstart contract
+        run: python -W error::ResourceWarning -m unittest tests.test_quickstart -v
       - name: Release byte manifest
         run: python scripts/generate-package-manifest.py --check --source git
 
