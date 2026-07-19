@@ -24,8 +24,8 @@ When the user explicitly asks to install or update ACGM for Codex:
    expires before mutation.
 4. Never remove, replace, merge, or adopt `acgm-codex@personal`, duplicate
    installs, unknown sources, another scope, newer/unknown versions, or private
-   `PLUGIN_DATA` / Event Ledger content. The sole plugin-upgrade exception is one
-   enabled user-scope official RC2/RC3/RC4/0.2-RC1 whose exact old source/ref/policy,
+   Event Ledger/HMAC content. The sole plugin-upgrade exception is one enabled
+   user-scope official RC2/RC3/RC4/0.2-RC1/0.2-RC2 whose exact old source/ref/policy,
    marketplace snapshot, bytes, and sole cache entry all verify. The plan digest
    must explicitly include the fixed marketplace remove, exact-ref add, and
    plugin add sequence. A fully verified interrupted official transition may be
@@ -37,7 +37,10 @@ When the user explicitly asks to install or update ACGM for Codex:
    postconditions.
    The Agent carries the digest from plan to apply; never ask the user to copy
    it, hand-edit Codex config, or hand-write governance files.
-6. In the next normal Codex task, the user must personally review `/hooks`.
+6. After plugin installation or replacement, fully quit and reopen Codex
+   desktop. A new task inside the old app-server process is not a fresh plugin
+   load. In the first normal task after that restart, the user must personally
+   review `/hooks`.
    When the pending set contains only the exact verified ACGM definitions and
    Codex offers **Trust all and continue**, that one platform action may trust
    the bundle. Never bulk-trust unrelated or unknown Hooks. The first
@@ -45,6 +48,12 @@ When the user explicitly asks to install or update ACGM for Codex:
    require a second artificial task. This is the required ACGM-specific trust
    boundary; any separate network, filesystem, or command permission prompts
    remain controlled by Codex or the operating system.
+7. The exact install plan may publish only the manifest-bound release runtime
+   to `PLUGIN_DATA/runtime/acgm_codex.py`. Its digest must bind the hashed logical
+   target, expected hash/size, observed preimage/state, and publication need.
+   The fixed Hook command embeds the same hash/size, so changed runtime bytes
+   require a changed Hook definition and new platform trust; unknown runtime or
+   unsafe parent state remains blocked.
 
 This RC supports macOS and Linux with Python 3.10+. It is blocked on Windows:
 the current runtime uses POSIX `fcntl` locking and has not passed a native

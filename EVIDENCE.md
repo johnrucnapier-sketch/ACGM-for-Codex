@@ -8,12 +8,16 @@ real 2026-07-17 Hook observation remain historical evidence. Exact-tag RC1 E2E
 reached the real marketplace replacement step and then stopped safely when
 Codex 0.144.5 exposed two platform shapes absent from the fixtures: no
 `.codex-marketplace-install.json`, plus an old installed version/cache
-re-associated with the new marketplace ref. The `0.2.0-rc.2` candidate repairs
-those findings with strict optional-metadata and official-transition evidence,
-while retaining one-consent `standard-v1` provisioning, ambiguous-root
-protection, read-only standalone diagnostics, and first-observed-Hook heartbeat
-behavior. RC2 has automated fixture coverage, but exact-tag installed E2E and
-the subsequent real `/hooks` trust/tool-event boundary are still pending.
+re-associated with the new marketplace ref. RC2 repaired those release-tool
+findings, but real desktop trials then exposed a second lifecycle defect: an
+app-server retained RC1 Hook commands after RC2 installation, Codex pruned the
+referenced version cache, and repeated missing-script Stop failures stranded
+multiple tasks. The `0.2.0-rc.3` candidate moves the runtime to stable
+`PLUGIN_DATA`, binds its exact size/hash into each fixed Hook command and the
+install authorization/postflight, and requires a full desktop restart before
+new-runtime acceptance. RC3 has automated fixture coverage, but exact-tag
+installed E2E and the subsequent real `/hooks` trust/tool-event boundary are
+still pending.
 Broader automatic-installation and automatic-Hook claims therefore remain
 unpromoted.
 
@@ -32,6 +36,36 @@ unpromoted.
 | The Event Ledger is source-minimized | Automated contract | Search the real plugin data directory after E2E |
 | Native Windows runtime is supported | Blocked | Replace POSIX `fcntl` and pass native Windows install/runtime E2E |
 | ACGM reduces long-horizon drift in general | Predictive | Repeated external project trials with reviewed controls |
+
+## 0.2.0-rc.3 candidate evidence
+
+- A real RC2 installation showed exact plugin config/cache state and a healthy
+  Event Ledger while strict doctor still reported `hook observed: no`. The
+  running Codex app-server predated the install. A genuine new `codex exec`
+  process—not a manually invoked Hook—then attempted the retained RC1 absolute
+  Hook path after Codex pruned it, reproducing the missing-script failure shown
+  across the user's stuck tasks. This is evidence of stale process lifecycle and
+  cache-path coupling, not project drift or Hermes runtime failure.
+- Hook contract fixtures verify that every RC3 command embeds the exact runtime
+  size and SHA-256, reads a regular stable file once with no-follow/nonblocking
+  flags, executes only those same verified bytes, and returns `{}` for unset
+  `PLUGIN_DATA`, missing/changed/wrong-size/symlink/FIFO targets. Changing
+  runtime bytes without changing the trusted command cannot execute them.
+- Bootstrap fixtures cover missing, exact/idempotent, permission-drifted,
+  digest-pinned known-old, unrecognized, and symlinked stable runtimes; unsafe
+  or writable parents; zero-progress writes; injected write/fchmod/fsync/replace
+  failure cleanup; and a FIFO race during publisher inspection. Unknown runtime
+  bytes and dirty cache entries remain fail-closed.
+- The install authorization plan binds the stable runtime logical-path hash,
+  expected hash/size, observed state/hash/size, replaceability, and publication
+  requirement. A changed known preimage after dry-run makes the old digest
+  stale; an unrecognized preimage blocks without replacement; exact state is
+  idempotent with a stable digest.
+- The Codex platform trust hash is claimed only for the fixed Hook command. The
+  embedded hash/size and digest-bound official publisher/postflight are the
+  separate evidence binding runtime bytes. RC3 exact-tag installation, full
+  desktop restart, `/hooks` review, genuine SessionStart heartbeat, and strict
+  doctor pass remain promotion gates.
 
 ## 0.2.0-rc.2 candidate evidence
 

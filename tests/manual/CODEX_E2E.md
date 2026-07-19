@@ -5,7 +5,7 @@ repositories. Capture versions and results, but never paste secrets into a promp
 or ledger fixture.
 
 **Candidate status:** this checklist defines the remaining acceptance work for
-`0.2.0-rc.2`. It has not yet been recorded as passed against an installed
+`0.2.0-rc.3`. It has not yet been recorded as passed against an installed
 candidate in a completely new Codex task.
 
 ## 1. Package and one-consent quickstart
@@ -40,8 +40,8 @@ plan. The dry run is machine verification, not a second user approval.
 Expected:
 
 - the source is the exact candidate tag, manifest, and package inventory;
-- `acgm-codex@acgm-codex` version `0.2.0-rc.2` is installed and enabled from
-  the exact repository and `v0.2.0-rc.2`;
+- `acgm-codex@acgm-codex` version `0.2.0-rc.3` is installed and enabled from
+  the exact repository and `v0.2.0-rc.3`;
 - cached package bytes match the source manifest;
 - the target has the required governance assets, is activated, and doctor sees
   it as `GOVERNED`;
@@ -61,32 +61,33 @@ the project apply stage and confirm the combined command returns
 
 ### Verified official upgrade path
 
-In a disposable Codex profile, install the public official RC4 tag first and
+In a disposable Codex profile, install the public official `0.2.0-rc.2` tag first and
 record its user scope, marketplace source/ref, sole cache directory, and private
-plugin-data metadata. Then run the RC1 combined dry-run/apply flow above.
+plugin-data metadata. Then run the RC3 combined dry-run/apply flow above.
 
 Expected:
 
-- the plan explicitly contains marketplace remove, exact `v0.2.0-rc.2`
+- the plan explicitly contains marketplace remove, exact `v0.2.0-rc.3`
   marketplace add, and plugin add;
 - apply refuses a changed starting version/ref, marketplace snapshot, installed
   cache, plan digest, or any duplicate/foreign/unknown/newer state before its
   first mutation;
-- the final installation has the full `0.2.0-rc.2` cache and only the exact
+- the final installation has the full `0.2.0-rc.3` cache and only the exact
   fail-open bridge at the verified old version path; both pass inventory and
   byte verification;
 - before closing the old task, trigger its old Stop Hook and confirm it exits
   once with an empty result rather than producing another model/Hook turn;
-- private `PLUGIN_DATA`, Event Ledger, and HMAC key are not copied, reset, or
-  adopted by the installer;
+- the only planned `PLUGIN_DATA` mutation is the exact manifest-bound
+  `runtime/acgm_codex.py`; the Event Ledger, HMAC key, and other plugin data are
+  not copied, reset, or adopted by the installer;
 - an injected failure is reported as partial/recheck state, never as automatic
   rollback.
 
 Also exercise the exact RC1 interruption observed on Codex 0.144.5: official
 RC4 cache remains installed while the marketplace and installed source ref have
-already moved to `v0.2.0-rc.1`. RC2 planning must classify only the completely
+already moved to `v0.2.0-rc.1`. RC3 planning must classify only the completely
 verified form as `READY_FOR_OFFICIAL_UPGRADE_RECOVERY`, require a new digest,
-and roll it forward through marketplace remove, exact RC2 add, and plugin add.
+and roll it forward through marketplace remove, exact RC3 add, and plugin add.
 Any changed old cache, prior marketplace revision/manifest, scope, policy,
 source, ref, duplicate, or private-data identity must stop before plugin add.
 
@@ -115,8 +116,10 @@ the established parent remains the project root.
 
 ## 3. Hook trust and the first real heartbeat
 
-Newly installed plugins load at normal Codex task boundaries. Start the next
-normal task in the disposable governed project, open `/hooks`, verify the source
+After installation, record the current Codex app-server process identity, fully
+quit Codex desktop, reopen it, and confirm the process identity changed. Only
+then start the next normal task in the disposable governed project. Do not
+manually invoke a Hook or simulate its heartbeat. Open `/hooks`, verify the source
 is the installed `acgm-codex` plugin, and review every command and matcher. If
 the pending set contains only this exact verified ACGM release and the client
 offers **Trust all and continue**, accept the bundle with that one platform
@@ -137,7 +140,7 @@ After trust, run one harmless real tool call such as a Git status inspection,
 then run:
 
 ```bash
-ACGM="${CODEX_HOME:-$HOME/.codex}/plugins/cache/acgm-codex/acgm-codex/0.2.0-rc.2/bin/acgm-codex"
+ACGM="${CODEX_HOME:-$HOME/.codex}/plugins/cache/acgm-codex/acgm-codex/0.2.0-rc.3/bin/acgm-codex"
 "$ACGM" quickstart status /absolute/path/to/disposable-project --json
 "$ACGM" doctor /absolute/path/to/disposable-project --strict
 ```
@@ -146,6 +149,16 @@ Expected: the first actually observed ACGM Hook records the current activation
 heartbeat and both checks reach completion. A second artificial verification
 task is not required. If the heartbeat is absent, installation and local
 governance are not proof that automatic Hooks ran.
+
+Before trusting, inspect the fixed command and confirm its embedded runtime
+size and SHA-256 match the installed stable
+`PLUGIN_DATA/runtime/acgm_codex.py`. Confirm the file is private and regular,
+its existing parent chain is user-owned and not group/other writable, and the
+installer postflight reports the same hash. In disposable copies, replace the
+target with changed bytes, a symlink, and a FIFO; each Hook must return `{}`
+quickly without executing or looping. The platform trust hash is evidence for
+the fixed command definition; the embedded values and digest-bound installer
+are the separate evidence for runtime bytes.
 
 Also run strict doctor and `report --json` through the normal managed Codex
 tool sandbox after the Hook has created its ledger. Record locator, ledger, key,

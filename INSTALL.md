@@ -1,7 +1,7 @@
 # ACGM for Codex one-consent installation / 一次授权安装
 
-Public candidate: **`0.2.0-rc.2`**, immutable source tag:
-**`v0.2.0-rc.2`**.
+Public candidate: **`0.2.0-rc.3`**, immutable source tag:
+**`v0.2.0-rc.3`**.
 
 ACGM uses the official Codex Git marketplace. It never hand-edits Codex
 `config.toml`, never copies private Event Ledger data, and never silently
@@ -23,7 +23,7 @@ The Agent performs:
 
 ```bash
 ACGM_SOURCE="$(mktemp -d)/ACGM-for-Codex"
-git clone --branch v0.2.0-rc.2 --depth 1 \
+git clone --branch v0.2.0-rc.3 --depth 1 \
   https://github.com/johnrucnapier-sketch/ACGM-for-Codex.git "$ACGM_SOURCE"
 python3 "$ACGM_SOURCE/scripts/quickstart.py" \
   --project /absolute/path/to/the/exact/project \
@@ -55,7 +55,7 @@ scope、ADR 或 snapshot，也不重复询问同一授权。
 3. for a fresh install, runs only the two fixed official Codex installation
    commands;
 4. as the sole plugin-upgrade exception, can replace one enabled user-scope
-   official `0.1.0-rc.2`, `0.1.0-rc.3`, `0.1.0-rc.4`, or `0.2.0-rc.1` whose repository, ref,
+   official `0.1.0-rc.2`, `0.1.0-rc.3`, `0.1.0-rc.4`, `0.2.0-rc.1`, or `0.2.0-rc.2` whose repository, ref,
    policy, marketplace snapshot, package bytes, and sole cache entry all verify;
    a CLI-omitted scope is accepted only through the exact enabled plugin table
    in the already bound user `CODEX_HOME`, never by absence alone;
@@ -67,7 +67,11 @@ scope、ADR 或 snapshot，也不重复询问同一授权。
    bridge, including paths retained by tasks already stale before this upgrade.
    The final cache contains the full target release plus only those exact
    fail-open bridges; a retained full old release or altered bridge is rejected;
-5. verifies source/ref, enabled version, and cached package bytes;
+5. verifies source/ref, enabled version, and cached package bytes, then publishes
+   only the digest-bound release runtime to stable
+   `PLUGIN_DATA/runtime/acgm_codex.py`. The plan binds the logical target hash,
+   expected hash and size, observed preimage/state, and whether publication is
+   required. Unknown bytes or unsafe parents are not replaced;
 6. requires the explicit quickstart target to be the exact Git project root and
    refuses parent containers rather than guessing a child. Runtime Hooks have a
    separate unique-child resolver for an unborn parent, but only when every
@@ -80,7 +84,7 @@ scope、ADR 或 snapshot，也不重复询问同一授权。
    `init` flow;
 10. safely adopts the preset into a healthy already-active project when only the
     missing preset decision/snapshot must be added, and allows project adapter
-    upgrades only from the explicit compatible RC2/RC3/RC4/0.2-RC1 set—not from unknown
+    upgrades only from the explicit compatible RC2/RC3/RC4/0.2-RC1/0.2-RC2 set—not from unknown
     or newer versions;
 11. activates the project without rotating an already-valid activation;
 12. runs local doctor postconditions and records a private progress receipt for
@@ -94,7 +98,13 @@ one remaining Codex-owned trust boundary, not a failed installation.
 
 ## The ACGM-specific platform confirmation / ACGM 专属平台确认
 
-Codex records trust against each exact non-managed Hook definition. This is the
+Codex records trust against each exact non-managed Hook definition. The
+platform trust hash binds that fixed command, not an independently mutable
+runtime file. Each RC3 command therefore embeds the exact authorized runtime
+size and SHA-256 and executes only the same bytes it read and verified; changing
+runtime bytes changes every Hook definition and requires a new review. The
+digest-bound installer and postflight separately bind the stable runtime
+publication. This is the
 only required ACGM-specific post-install trust boundary: a plugin
 cannot and must not trust its own executable Hooks. At the next normal task
 boundary, current Codex clients may offer **Trust all and continue**. Use that
@@ -104,7 +114,10 @@ Hooks are also pending, review them individually rather than bulk-trusting
 them. The surrounding environment may still show its own network, filesystem,
 or command-permission prompts; quickstart does not bypass Codex or OS security.
 
-No second artificial verification task is required. After trust, the first
+After any plugin install or replacement, fully quit and reopen Codex desktop
+before reviewing the new definitions. Starting another task inside the old
+app-server process is not a fresh runtime load. No second artificial
+verification task is required after that restart. After trust, the first
 actually observed ACGM Hook records the activation heartbeat. The Agent can then
 run:
 
@@ -113,8 +126,9 @@ acgm-codex quickstart status /absolute/path/to/project --json
 ```
 
 or `acgm-codex doctor /absolute/path/to/project --strict` to obtain `COMPLETE`.
-Newly installed plugins still load at Codex task boundaries, so the user starts
-the next normal work task rather than following a separate multi-task ceremony.
+Newly installed plugins load only after the required desktop restart, so the
+user starts the next normal work task rather than following a separate
+multi-task ceremony.
 An open task from the replaced version may continue safely through its bridge,
 but ACGM is intentionally inactive in that stale task after the old full runtime
 is gone. Restart that task to load the complete current runtime.
@@ -126,12 +140,14 @@ One-consent quickstart is intentionally narrow. It does not authorize or perform
 - removal, migration, or adoption of `acgm-codex@personal`;
 - replacement of duplicate, unknown-source, wrong-scope, newer, unrecognized,
   or otherwise wrong-version installs. The only exception is the exact verified
-  official user-level RC2/RC3/RC4/0.2-RC1 upgrade described above;
+  official user-level RC2/RC3/RC4/0.2-RC1/0.2-RC2 upgrade described above;
 - overwriting an unknown Constitution, `AGENTS.md`, scope, decision, or snapshot;
 - overwriting an unknown `.acgm/quickstart.json` receipt, absorbing a concurrent
   Git/index/governance change into the activation baseline, or downgrading an
   unknown/newer adapter state;
-- copying or resetting private `PLUGIN_DATA`, Event Ledger, or its HMAC key;
+- copying, resetting, or adopting the private Event Ledger, its HMAC key, or
+  any other plugin data. The sole planned `PLUGIN_DATA` write is the exact
+  digest-bound stable runtime described above;
 - release, deployment, destructive cleanup, credential/permission changes, or
   any unrelated external mutation.
 

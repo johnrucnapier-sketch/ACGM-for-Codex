@@ -9,7 +9,7 @@ source-minimized local Event Ledger.
 
 [中文](README.md)
 
-> **Status: `0.2.0-rc.2`.** This is a public-preview release candidate, not a stable
+> **Status: `0.2.0-rc.3`.** This is a public-preview release candidate, not a stable
 > release. Automated tests can validate the package and runtime. Automatic Hook
 > behavior is not considered verified until Hook trust and real tool-call E2E pass
 > in a completely new task on the installed Codex version.
@@ -80,7 +80,7 @@ The Agent clones the exact tag and runs:
 
 ```bash
 ACGM_SOURCE="$(mktemp -d)/ACGM-for-Codex"
-git clone --branch v0.2.0-rc.2 --depth 1 \
+git clone --branch v0.2.0-rc.3 --depth 1 \
   https://github.com/johnrucnapier-sketch/ACGM-for-Codex.git "$ACGM_SOURCE"
 python3 "$ACGM_SOURCE/scripts/quickstart.py" \
   --project /absolute/path/to/the/exact/project --dry-run --json
@@ -106,28 +106,31 @@ and identity, existing managed-file hashes, and every proposed byte. Any changed
 fact invalidates the grant before apply.
 
 For a fresh install, bootstrap invokes `codex plugin marketplace add
-johnrucnapier-sketch/ACGM-for-Codex --ref v0.2.0-rc.2 --json` and then `codex
+johnrucnapier-sketch/ACGM-for-Codex --ref v0.2.0-rc.3 --json` and then `codex
 plugin add acgm-codex@acgm-codex --json`. It independently verifies the exact
 marketplace source/ref, plugin name/version/enabled state, and cached package
 bytes. The sole automatic plugin-upgrade exception is one enabled, user-scope
-official `0.1.0-rc.2`, `0.1.0-rc.3`, `0.1.0-rc.4`, or `0.2.0-rc.1` whose source, ref, policy,
+official `0.1.0-rc.2`, `0.1.0-rc.3`, `0.1.0-rc.4`, `0.2.0-rc.1`, or `0.2.0-rc.2` whose source, ref, policy,
 marketplace snapshot, package bytes, and sole cache entry all verify. That
 digest explicitly binds marketplace remove, exact-ref marketplace add, and
 plugin add. A failed external mutation is reported as partial/recheck state; it
 is not described as rolled back.
-An open task continues to invoke the old versioned Hook path it loaded at task
-start. RC2 protects that path during each upgrade step and publishes verified
-fail-open bridges for every known official pre-guard version, including tasks
-already stale before this upgrade. The stale task
-therefore cannot turn a missing Stop Hook into a model loop, while a restarted
-task loads the full current ACGM runtime. New Hook commands also carry their
-missing-runtime guard inline so a future upgrade cannot recreate this lockout.
-This is not Lite mode and does not weaken rules while the full runtime exists.
-RC2 also verifies the temporary “old installed cache + new source ref”
+An open task continues to invoke the exact Hook command loaded by its Codex
+process. RC3 atomically publishes the complete runtime at stable
+`PLUGIN_DATA/runtime/acgm_codex.py`, so new Hooks no longer depend on a
+versioned cache directory that Codex can prune. Codex trust hashes the fixed
+Hook command; that command embeds this release's exact runtime size and SHA-256
+and executes only the same bytes it read and verified. Changed runtime bytes
+therefore change the Hook definition and require a new platform review rather
+than executing silently under an old trust decision. Missing, changed,
+symlinked, FIFO, and special-file runtimes fail open immediately with an empty
+result, so a Stop error cannot become a model loop. This is not Lite mode and
+does not weaken rules while the full runtime exists. Old-version bridges remain
+only as transition recovery. RC3 also verifies the temporary “old installed cache + new source ref”
 re-association that Codex can expose after marketplace replacement. It proceeds
 only when the old cache, target checkout, scope, policy, and pinned official
 release identities all match. The equivalent RC1-interrupted state receives a
-new RC2 digest and is rolled forward automatically without hand-editing config.
+new RC3 digest and is rolled forward automatically without hand-editing config.
 If installation succeeds but the project root changes before project apply, the
 combined result reports `PROJECT_RECHECK_REQUIRED` with `partial=true` instead
 of escaping as a traceback.
@@ -143,7 +146,9 @@ when every entry other than `.git` is a verified direct child repository. An
 ordinary untracked or ignored parent file stops that runtime-only selection.
 
 Codex Hook trust is the only required ACGM-specific post-install confirmation
-the plugin cannot perform for the user. At the next normal task boundary,
+the plugin cannot perform for the user. After plugin replacement, fully quit
+and reopen Codex desktop first; a new task inside the old app-server process is
+not proof that the new release loaded. At the next normal task boundary,
 current Codex clients may offer **Trust
 all and continue**. Use that single platform action only when the pending review
 set contains exclusively the verified ACGM definitions from this exact release;
@@ -154,9 +159,11 @@ still show its own network, filesystem, or command-permission prompts; ACGM does
 not bypass Codex or OS security.
 
 Legacy `acgm-codex@personal`, duplicates, another scope/source/ref, unknown
-versions, and newer versions are fail-closed; the exact verified official
-four exact official candidate paths above are the only plugin-upgrade exceptions. Bootstrap never
-adopts, resets, or moves private `PLUGIN_DATA` / Event Ledger content. See
+versions, and newer versions are fail-closed; the five exact verified official
+candidate paths above are the only plugin-upgrade exceptions. Under the
+digest-bound install plan, bootstrap publishes only the exact release runtime
+to `PLUGIN_DATA/runtime/acgm_codex.py`; it never adopts, resets, or moves the
+private Event Ledger, HMAC key, or other plugin data. See
 [INSTALL.md](INSTALL.md).
 Unknown policy, symlinks, non-regular managed paths, substantive active drift,
 and stale plan digests also stop before automatic replacement. A state whose
@@ -192,7 +199,7 @@ acgm-codex quickstart status /absolute/path/to/project --json
 those exact bytes; the user does not have to type a Constitution. Existing
 substantive policy is preserved. Version-only adapter drift with an otherwise
 matching baseline is upgraded in the same authorization only from the explicit
-compatible RC2/RC3/RC4/0.2-RC1 project-adapter set; an unknown or newer state is never
+compatible RC2/RC3/RC4/0.2-RC1/0.2-RC2 project-adapter set; an unknown or newer state is never
 automatically downgraded. A healthy manually activated project may adopt its
 missing standard decision/snapshot while preserving the activation id. Unknown
 receipts, concurrent Git/index changes, unknown placeholders, symlinks,

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import hashlib
+import os
 from pathlib import Path
 import re
 import shlex
@@ -13,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_PATH = ROOT / ".codex-plugin" / "plugin.json"
 MARKETPLACE_PATH = ROOT / ".agents" / "plugins" / "marketplace.json"
 HOOK_PATH = ROOT / "hooks" / "hooks.json"
+RUNTIME_PATH = ROOT / "scripts" / "acgm_codex.py"
 VERSION_PATTERN = re.compile(
     r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
     r"(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?"
@@ -37,10 +40,8 @@ EXPECTED_HOOKS = {
     "PreCompact": ("manual|auto", "pre-compact", 10),
     "Stop": (None, "stop", 10),
 }
-HOOK_WRAPPER = (
-    'python3 -c "import os,runpy,sys;p=sys.argv[1];sys.argv=sys.argv[1:];'
-    "runpy.run_path(p,run_name='__main__') if os.path.isfile(p) else print('{}')\""
-)
+RUNTIME_SHA256 = hashlib.sha256(RUNTIME_PATH.read_bytes()).hexdigest()
+RUNTIME_SIZE = RUNTIME_PATH.stat().st_size
 
 
 def read_json(path: Path) -> dict:
@@ -212,25 +213,32 @@ class PackageContractTests(unittest.TestCase):
                 self.assertEqual(handler["type"], "command")
                 self.assertEqual(
                     handler["command"],
-                    f'{HOOK_WRAPPER} "${{PLUGIN_ROOT}}/scripts/acgm_codex.py" hook {mode}',
+                    handler["command"].rsplit(" hook ", 1)[0] + f" hook {mode}",
                 )
+                self.assertIn("PLUGIN_DATA", handler["command"])
+                self.assertIn(RUNTIME_SHA256, handler["command"])
+                self.assertIn(f"e={RUNTIME_SIZE}", handler["command"])
+                self.assertIn("O_NONBLOCK", handler["command"])
+                self.assertIn("S_ISREG", handler["command"])
+                self.assertNotIn("PLUGIN_ROOT", handler["command"])
                 self.assertEqual(handler["timeout"], timeout)
                 self.assertGreater(len(handler["statusMessage"].strip()), 10)
 
-    def test_hook_wrapper_fails_open_when_versioned_runtime_is_missing(self) -> None:
+    def test_hook_wrapper_fails_open_when_stable_runtime_is_missing(self) -> None:
         hooks = read_json(HOOK_PATH)["hooks"]
         with tempfile.TemporaryDirectory(prefix="acgm missing plugin ") as raw:
-            plugin_root = Path(raw)
+            plugin_data = Path(raw)
             for event, (_, _, _) in EXPECTED_HOOKS.items():
                 with self.subTest(event=event):
                     command = hooks[event][0]["hooks"][0]["command"]
-                    argv = shlex.split(
-                        command.replace("${PLUGIN_ROOT}", str(plugin_root))
-                    )
+                    argv = shlex.split(command)
+                    environment = dict(os.environ)
+                    environment["PLUGIN_DATA"] = str(plugin_data)
                     completed = subprocess.run(
                         argv,
                         input="{}\n",
                         check=False,
+                        env=environment,
                         text=True,
                         encoding="utf-8",
                         stdout=subprocess.PIPE,
@@ -243,23 +251,31 @@ class PackageContractTests(unittest.TestCase):
     def test_hook_wrapper_preserves_runtime_arguments_when_present(self) -> None:
         hooks = read_json(HOOK_PATH)["hooks"]
         with tempfile.TemporaryDirectory(prefix="acgm present plugin ") as raw:
-            plugin_root = Path(raw)
-            script = plugin_root / "scripts" / "acgm_codex.py"
+            plugin_data = Path(raw)
+            script = plugin_data / "runtime" / "acgm_codex.py"
             script.parent.mkdir()
             script.write_text(
                 "import json, sys\nprint(json.dumps(sys.argv))\n",
                 encoding="utf-8",
             )
+            fixture_hash = hashlib.sha256(script.read_bytes()).hexdigest()
             for event, (_, mode, _) in EXPECTED_HOOKS.items():
                 with self.subTest(event=event):
-                    command = hooks[event][0]["hooks"][0]["command"]
-                    argv = shlex.split(
-                        command.replace("${PLUGIN_ROOT}", str(plugin_root))
+                    trusted_command = hooks[event][0]["hooks"][0]["command"]
+                    fixture_command = trusted_command.replace(
+                        RUNTIME_SHA256, fixture_hash
+                    ).replace(
+                        f"e={RUNTIME_SIZE}", f"e={script.stat().st_size}"
                     )
+                    self.assertNotEqual(fixture_command, trusted_command)
+                    argv = shlex.split(fixture_command)
+                    environment = dict(os.environ)
+                    environment["PLUGIN_DATA"] = str(plugin_data)
                     completed = subprocess.run(
                         argv,
                         input="{}\n",
                         check=False,
+                        env=environment,
                         text=True,
                         encoding="utf-8",
                         stdout=subprocess.PIPE,
@@ -272,9 +288,131 @@ class PackageContractTests(unittest.TestCase):
                         [str(script), "hook", mode],
                     )
 
+    def test_trusted_hook_hash_rejects_changed_runtime_bytes(self) -> None:
+        command = read_json(HOOK_PATH)["hooks"]["SessionStart"][0]["hooks"][0][
+            "command"
+        ]
+        with tempfile.TemporaryDirectory(prefix="acgm changed runtime ") as raw:
+            plugin_data = Path(raw)
+            script = plugin_data / "runtime" / "acgm_codex.py"
+            script.parent.mkdir()
+            script.write_bytes(RUNTIME_PATH.read_bytes() + b"\n# changed after trust\n")
+            environment = dict(os.environ)
+            environment["PLUGIN_DATA"] = str(plugin_data)
+            completed = subprocess.run(
+                shlex.split(command),
+                input="{}\n",
+                check=False,
+                env=environment,
+                text=True,
+                encoding="utf-8",
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=5,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertEqual(json.loads(completed.stdout), {})
+
+    def test_hook_wrapper_fails_open_when_plugin_data_is_unset(self) -> None:
+        command = read_json(HOOK_PATH)["hooks"]["SessionStart"][0]["hooks"][0][
+            "command"
+        ]
+        environment = dict(os.environ)
+        environment.pop("PLUGIN_DATA", None)
+        completed = subprocess.run(
+            shlex.split(command),
+            input="{}\n",
+            check=False,
+            env=environment,
+            text=True,
+            encoding="utf-8",
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=5,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(json.loads(completed.stdout), {})
+
+    def test_hook_wrapper_rejects_wrong_sized_regular_runtime(self) -> None:
+        command = read_json(HOOK_PATH)["hooks"]["SessionStart"][0]["hooks"][0][
+            "command"
+        ]
+        with tempfile.TemporaryDirectory(prefix="acgm wrong size runtime ") as raw:
+            plugin_data = Path(raw)
+            script = plugin_data / "runtime" / "acgm_codex.py"
+            script.parent.mkdir()
+            script.write_bytes(RUNTIME_PATH.read_bytes() + b"\n")
+            environment = dict(os.environ)
+            environment["PLUGIN_DATA"] = str(plugin_data)
+            completed = subprocess.run(
+                shlex.split(command),
+                input="{}\n",
+                check=False,
+                env=environment,
+                text=True,
+                encoding="utf-8",
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=5,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertEqual(json.loads(completed.stdout), {})
+
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "FIFO is unavailable")
+    def test_hook_wrapper_rejects_fifo_without_blocking(self) -> None:
+        command = read_json(HOOK_PATH)["hooks"]["SessionStart"][0]["hooks"][0][
+            "command"
+        ]
+        with tempfile.TemporaryDirectory(prefix="acgm fifo runtime ") as raw:
+            plugin_data = Path(raw)
+            runtime = plugin_data / "runtime"
+            runtime.mkdir()
+            os.mkfifo(runtime / "acgm_codex.py", 0o600)
+            environment = dict(os.environ)
+            environment["PLUGIN_DATA"] = str(plugin_data)
+            completed = subprocess.run(
+                shlex.split(command),
+                input="{}\n",
+                check=False,
+                env=environment,
+                text=True,
+                encoding="utf-8",
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=2,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertEqual(json.loads(completed.stdout), {})
+
+    def test_hook_wrapper_rejects_symlinked_runtime(self) -> None:
+        command = read_json(HOOK_PATH)["hooks"]["SessionStart"][0]["hooks"][0][
+            "command"
+        ]
+        with tempfile.TemporaryDirectory(prefix="acgm symlink runtime ") as raw:
+            plugin_data = Path(raw)
+            runtime = plugin_data / "runtime"
+            runtime.mkdir()
+            (runtime / "acgm_codex.py").symlink_to(RUNTIME_PATH)
+            environment = dict(os.environ)
+            environment["PLUGIN_DATA"] = str(plugin_data)
+            completed = subprocess.run(
+                shlex.split(command),
+                input="{}\n",
+                check=False,
+                env=environment,
+                text=True,
+                encoding="utf-8",
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=5,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertEqual(json.loads(completed.stdout), {})
+
     def test_hooks_use_only_codex_contract(self) -> None:
         raw = HOOK_PATH.read_text(encoding="utf-8")
-        self.assertIn("${PLUGIN_ROOT}", raw)
+        self.assertIn("PLUGIN_DATA", raw)
+        self.assertNotIn("PLUGIN_ROOT", raw)
         self.assertNotIn("CLAUDE_", raw)
         for unsupported in (
             "UserPromptSubmit",

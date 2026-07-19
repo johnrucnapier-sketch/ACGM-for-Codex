@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.2.0-rc.3 — 2026-07-19 candidate; stable Hook runtime and restart-safe trust binding
+
+- Move the installed Hook runtime out of Codex's prunable versioned plugin cache
+  and into the plugin's stable `PLUGIN_DATA/runtime/acgm_codex.py` location.
+  Bootstrap publishes only exact current bytes or replaces a digest-pinned known
+  official old runtime through a private, fsynced, atomic file; unknown bytes,
+  symlinks, unsafe parents, wrong ownership, and public-writable paths remain
+  fail-closed. Failed writes, permission changes, fsync, and replacement leave no
+  temporary executable behind.
+- Preserve the Codex Hook trust boundary. Every released Hook definition embeds
+  the exact runtime SHA-256 and size, opens the stable file without following
+  links and without blocking, verifies that it is a regular file of that exact
+  size, reads it once, checks the digest, and executes those same in-memory
+  bytes. A runtime-byte change therefore also changes the trusted Hook command
+  and requires a new platform review; the fixed command never silently executes
+  a future mutable runtime.
+- Fail open with `{}` when `PLUGIN_DATA` is unset or the stable runtime is
+  missing, changed, symlinked, a FIFO/special file, or otherwise unavailable.
+  This removes the missing-cache-path Stop Hook cycle without weakening cache,
+  marketplace, package, or private-ledger verification.
+- Require a full Codex desktop restart after plugin replacement before judging
+  the new Hook set or `SessionStart`. An already-running app-server can retain a
+  previous release's exact Hook command even after config and cache show the new
+  version; a new task inside that old process is not installation acceptance.
+- Add regression coverage for missing, exact, known-old, unrecognized, and
+  symlinked runtimes; unsafe parents; atomic failure cleanup and zero-progress
+  writes; unset `PLUGIN_DATA`; wrong-sized files; FIFO fail-open behavior; and
+  the command-hash/runtime-byte authorization boundary.
+
 ## 0.2.0-rc.2 — 2026-07-19 candidate; installed-platform upgrade and Hook lifecycle repair
 
 - Prevent version upgrades from stranding Hooks already loaded by an open Codex

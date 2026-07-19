@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -62,6 +63,7 @@ def make_release(
     tag = tag or f"v{version}"
     source = root / "source"
     (source / "hooks").mkdir(parents=True)
+    (source / "scripts").mkdir(parents=True)
     (source / ".codex-plugin").mkdir(parents=True)
     (source / ".agents" / "plugins").mkdir(parents=True)
     (source / ".gitignore").write_text(
@@ -70,6 +72,9 @@ def make_release(
     )
     (source / "VERSION").write_text(version + "\n", encoding="utf-8")
     (source / "hooks" / "hooks.json").write_text('{"hooks": {}}\n', encoding="utf-8")
+    (source / "scripts" / "acgm_codex.py").write_text(
+        f'VERSION = "{version}"\n', encoding="utf-8"
+    )
     (source / ".codex-plugin" / "plugin.json").write_text(
         json.dumps({"name": preflight.PLUGIN_NAME, "version": version}) + "\n",
         encoding="utf-8",
@@ -1143,8 +1148,11 @@ class BootstrapTests(unittest.TestCase):
         self.assertFalse(
             preflight._known_official_upgrade("0.1.0-rc.10", "v0.1.0-rc.10")
         )
-        self.assertFalse(
+        self.assertTrue(
             preflight._known_official_upgrade("0.2.0-rc.2", "v0.2.0-rc.2")
+        )
+        self.assertFalse(
+            preflight._known_official_upgrade("0.2.0-rc.3", "v0.2.0-rc.3")
         )
 
         temp, source, env, fake = self.upgrade_fixture()
@@ -2031,7 +2039,7 @@ class BootstrapTests(unittest.TestCase):
     def test_unknown_newer_foreign_scope_and_duplicate_installs_never_auto_upgrade(self) -> None:
         cases: list[tuple[str, str, dict[str, object]]] = [
             ("unknown_old_version", "0.1.0-rc.10", {}),
-            ("newer_version", "0.2.0-rc.3", {}),
+            ("newer_version", "0.2.0-rc.4", {}),
             ("null_scope", "0.1.0-rc.4", {"installed_scope": None}),
             ("wrong_scope", "0.1.0-rc.4", {"installed_scope": "project"}),
             (
@@ -2581,6 +2589,389 @@ class BootstrapTests(unittest.TestCase):
             self.assertIn(
                 "package_manifest_not_exact_release_tag", result["error_codes"]
             )
+
+class StableRuntimeTests(unittest.TestCase):
+    def fixture(
+        self, *, runtime_bytes: bytes = b'VERSION = "fixture-current"\n'
+    ) -> tuple[tempfile.TemporaryDirectory[str], Path, dict[str, str], Path]:
+        temp = tempfile.TemporaryDirectory()
+        root = Path(temp.name)
+        source = root / "source"
+        (source / "scripts").mkdir(parents=True)
+        (source / "scripts" / bootstrap.STABLE_RUNTIME_NAME).write_bytes(
+            runtime_bytes
+        )
+        codex_home = root / "codex-home"
+        codex_home.mkdir(mode=0o700)
+        env = dict(os.environ)
+        env["HOME"] = str(root / "home")
+        env["CODEX_HOME"] = str(codex_home)
+        target = codex_home.joinpath(
+            *bootstrap.STABLE_RUNTIME_PARTS, bootstrap.STABLE_RUNTIME_NAME
+        )
+        return temp, source, env, target
+
+    def installed_fixture(
+        self,
+    ) -> tuple[
+        tempfile.TemporaryDirectory[str],
+        Path,
+        dict[str, str],
+        Path,
+        FakeCodex,
+    ]:
+        temp = tempfile.TemporaryDirectory()
+        root = Path(temp.name)
+        source = make_release(root)
+        env = dict(os.environ)
+        env["HOME"] = str(root / "home")
+        env["CODEX_HOME"] = str(root / "codex-home")
+        fake = FakeCodex(source, env)
+        installed = authorized_execute(source, env=env, runner=fake)
+        self.assertTrue(installed["ok"])
+        target = Path(env["CODEX_HOME"]).joinpath(
+            *bootstrap.STABLE_RUNTIME_PARTS, bootstrap.STABLE_RUNTIME_NAME
+        )
+        return temp, source, env, target, fake
+
+    def test_missing_runtime_is_published_atomically_and_idempotently(self) -> None:
+        temp, source, env, target = self.fixture()
+        with temp:
+            before = bootstrap._stable_runtime_evidence(source, env)
+            self.assertEqual(before["state"], "missing")
+            self.assertTrue(before["replaceable"])
+
+            published = bootstrap._publish_stable_runtime(source, env)
+            self.assertTrue(published["verified"])
+            self.assertTrue(published["published"])
+            self.assertEqual(published["previous_state"], "missing")
+            self.assertEqual(
+                target.read_bytes(),
+                (source / "scripts" / bootstrap.STABLE_RUNTIME_NAME).read_bytes(),
+            )
+            if os.name != "nt":
+                self.assertEqual(stat.S_IMODE(target.stat().st_mode), 0o600)
+
+            again = bootstrap._publish_stable_runtime(source, env)
+            self.assertTrue(again["verified"])
+            self.assertFalse(again["published"])
+            self.assertEqual(
+                list(target.parent.glob(f".{bootstrap.STABLE_RUNTIME_NAME}.new-*")),
+                [],
+            )
+
+    def test_install_digest_binds_stable_runtime_preimage_and_publication(self) -> None:
+        common: dict[str, object] = {
+            "status": "READY_FOR_STABLE_HOOK_RUNTIME",
+            "platform": "Darwin",
+            "python": "3.14",
+            "source": {"verified": True},
+            "codex": {"plugin": "INSTALLED_ENABLED_EXACT"},
+            "hook_definition_sha256": "1" * 64,
+            "lifecycle": {"stable_hook_runtime": "NOT_VERIFIED"},
+            "error_codes": [],
+            "actions": [],
+        }
+        missing = {
+            **common,
+            "stable_hook_runtime": {
+                "state": "missing",
+                "expected_sha256": "2" * 64,
+                "expected_size": 123,
+                "logical_path_sha256": "3" * 64,
+                "replaceable": True,
+                "verified": False,
+            },
+        }
+        known_old = {
+            **common,
+            "stable_hook_runtime": {
+                **missing["stable_hook_runtime"],
+                "state": "known-official-old-runtime",
+                "observed_sha256": "4" * 64,
+            },
+        }
+        target = {"schema": "fixture-target"}
+        missing_plan = bootstrap._install_authorization_plan(ROOT, missing, target)
+        old_plan = bootstrap._install_authorization_plan(ROOT, known_old, target)
+
+        self.assertEqual(
+            missing_plan["schema"], "acgm-codex-install-authorization-plan-v3"
+        )
+        self.assertEqual(
+            missing_plan["stable_hook_runtime_publication"]["target"],
+            "PLUGIN_DATA/runtime/acgm_codex.py",
+        )
+        self.assertEqual(
+            missing_plan["stable_hook_runtime_publication"]["replacement_policy"],
+            "missing-or-digest-pinned-known-official-only",
+        )
+        self.assertNotEqual(
+            bootstrap._install_plan_digest(missing_plan),
+            bootstrap._install_plan_digest(old_plan),
+        )
+
+    def test_runtime_preimage_change_after_dry_run_makes_plan_stale(self) -> None:
+        temp, source, env, target, fake = self.installed_fixture()
+        with temp:
+            target.unlink()
+            prepared = bootstrap.execute(
+                source,
+                dry_run=True,
+                authorized=False,
+                env=env,
+                runner=fake,
+            )
+            self.assertEqual(prepared["initial_status"], "READY_FOR_STABLE_HOOK_RUNTIME")
+            old = b'VERSION = "fixture-known-old"\n'
+            target.write_bytes(old)
+            if os.name != "nt":
+                target.chmod(0o600)
+            with mock.patch.dict(
+                preflight.KNOWN_OFFICIAL_RELEASES,
+                {
+                    "fixture-known-old": {
+                        "runtime_sha256": hashlib.sha256(old).hexdigest()
+                    }
+                },
+                clear=False,
+            ):
+                refused = bootstrap.execute(
+                    source,
+                    dry_run=False,
+                    authorized=True,
+                    expected_plan_digest=str(prepared["install_plan_digest"]),
+                    env=env,
+                    runner=fake,
+                )
+
+            self.assertEqual(refused["status"], "INSTALL_PLAN_STALE")
+            self.assertEqual(target.read_bytes(), old)
+
+    def test_unrecognized_runtime_after_dry_run_blocks_without_replacement(self) -> None:
+        temp, source, env, target, fake = self.installed_fixture()
+        with temp:
+            target.unlink()
+            prepared = bootstrap.execute(
+                source,
+                dry_run=True,
+                authorized=False,
+                env=env,
+                runner=fake,
+            )
+            unrecognized = b"changed after the authorized plan\n"
+            target.write_bytes(unrecognized)
+            if os.name != "nt":
+                target.chmod(0o600)
+            refused = bootstrap.execute(
+                source,
+                dry_run=False,
+                authorized=True,
+                expected_plan_digest=str(prepared["install_plan_digest"]),
+                env=env,
+                runner=fake,
+            )
+
+            self.assertEqual(refused["status"], "BLOCKED")
+            self.assertEqual(target.read_bytes(), unrecognized)
+
+    def test_exact_runtime_produces_stable_idempotent_plan_digest(self) -> None:
+        temp, source, env, target, fake = self.installed_fixture()
+        with temp:
+            first = bootstrap.execute(
+                source,
+                dry_run=True,
+                authorized=False,
+                env=env,
+                runner=fake,
+            )
+            second = bootstrap.execute(
+                source,
+                dry_run=True,
+                authorized=False,
+                env=env,
+                runner=fake,
+            )
+
+            self.assertTrue(first["idempotent"])
+            self.assertTrue(second["idempotent"])
+            self.assertEqual(first["install_plan_digest"], second["install_plan_digest"])
+            self.assertFalse(
+                first["authorization_plan"]["stable_hook_runtime_publication"][
+                    "required"
+                ]
+            )
+            self.assertEqual(
+                target.read_bytes(),
+                (source / "scripts" / bootstrap.STABLE_RUNTIME_NAME).read_bytes(),
+            )
+
+    def test_known_official_old_runtime_is_replaceable(self) -> None:
+        temp, source, env, target = self.fixture()
+        with temp:
+            old = b'VERSION = "fixture-old"\n'
+            target.parent.mkdir(parents=True, mode=0o700)
+            target.write_bytes(old)
+            if os.name != "nt":
+                target.chmod(0o600)
+            release = {"runtime_sha256": hashlib.sha256(old).hexdigest()}
+            with mock.patch.dict(
+                preflight.KNOWN_OFFICIAL_RELEASES,
+                {"fixture-old": release},
+                clear=False,
+            ):
+                before = bootstrap._stable_runtime_evidence(source, env)
+                self.assertEqual(before["state"], "known-official-old-runtime")
+                self.assertTrue(before["replaceable"])
+                published = bootstrap._publish_stable_runtime(source, env)
+
+            self.assertTrue(published["verified"])
+            self.assertTrue(published["published"])
+            self.assertEqual(published["previous_state"], "known-official-old-runtime")
+
+    def test_unrecognized_runtime_is_never_replaced(self) -> None:
+        temp, source, env, target = self.fixture()
+        with temp:
+            unrecognized = b"not an authorized runtime\n"
+            target.parent.mkdir(parents=True, mode=0o700)
+            target.write_bytes(unrecognized)
+            if os.name != "nt":
+                target.chmod(0o600)
+
+            before = bootstrap._stable_runtime_evidence(source, env)
+            published = bootstrap._publish_stable_runtime(source, env)
+
+            self.assertEqual(before["state"], "unrecognized-runtime")
+            self.assertFalse(before["replaceable"])
+            self.assertFalse(published["published"])
+            self.assertFalse(published["verified"])
+            self.assertEqual(target.read_bytes(), unrecognized)
+
+    def test_symlinked_runtime_is_never_replaced(self) -> None:
+        temp, source, env, target = self.fixture()
+        with temp:
+            target.parent.mkdir(parents=True, mode=0o700)
+            target.symlink_to(source / "scripts" / bootstrap.STABLE_RUNTIME_NAME)
+
+            observed = bootstrap._stable_runtime_evidence(source, env)
+            published = bootstrap._publish_stable_runtime(source, env)
+
+            self.assertEqual(observed["state"], "unsafe-entry")
+            self.assertFalse(observed["replaceable"])
+            self.assertFalse(published["published"])
+            self.assertTrue(target.is_symlink())
+
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "FIFO is unavailable")
+    def test_publisher_read_rejects_fifo_without_blocking(self) -> None:
+        temp, source, env, target = self.fixture()
+        with temp:
+            target.parent.mkdir(parents=True, mode=0o700)
+            os.mkfifo(target, 0o600)
+            program = "\n".join(
+                [
+                    "import os, sys",
+                    f"sys.path.insert(0, {str(ROOT / 'scripts')!r})",
+                    "import bootstrap",
+                    f"directory = {str(target.parent)!r}",
+                    "flags = os.O_RDONLY | getattr(os, 'O_DIRECTORY', 0)",
+                    "descriptor = os.open(directory, flags)",
+                    "try:",
+                    "    try:",
+                    "        bootstrap._read_regular_at(descriptor, 'acgm_codex.py')",
+                    "    except OSError:",
+                    "        pass",
+                    "    else:",
+                    "        raise SystemExit(3)",
+                    "finally:",
+                    "    os.close(descriptor)",
+                ]
+            )
+            completed = subprocess.run(
+                [sys.executable, "-B", "-c", program],
+                check=False,
+                text=True,
+                encoding="utf-8",
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=2,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+
+    def test_unsafe_or_symlinked_parent_is_never_used(self) -> None:
+        cases = ("group-writable", "symlink")
+        for case in cases:
+            with self.subTest(case=case):
+                temp, source, env, target = self.fixture()
+                with temp:
+                    codex_home = Path(env["CODEX_HOME"])
+                    if case == "group-writable":
+                        plugins = codex_home / "plugins"
+                        plugins.mkdir(mode=0o700)
+                        if os.name == "nt":
+                            self.skipTest("POSIX group/other mode is unavailable")
+                        plugins.chmod(0o770)
+                    else:
+                        outside = Path(temp.name) / "outside"
+                        outside.mkdir(mode=0o700)
+                        (codex_home / "plugins").symlink_to(
+                            outside, target_is_directory=True
+                        )
+
+                    observed = bootstrap._stable_runtime_evidence(source, env)
+                    published = bootstrap._publish_stable_runtime(source, env)
+
+                    self.assertEqual(observed["state"], "unsafe-parent")
+                    self.assertFalse(observed["replaceable"])
+                    self.assertFalse(published["published"])
+                    self.assertFalse(target.exists())
+
+    def test_atomic_failures_leave_no_temporary_runtime(self) -> None:
+        failures = ("replace", "fchmod", "fsync", "zero-write")
+        for failure in failures:
+            with self.subTest(failure=failure):
+                temp, source, env, target = self.fixture()
+                with temp:
+                    if failure == "replace":
+                        patcher = mock.patch.object(
+                            bootstrap.os,
+                            "replace",
+                            side_effect=OSError("injected replace failure"),
+                        )
+                    elif failure == "fchmod":
+                        if not hasattr(bootstrap.os, "fchmod"):
+                            self.skipTest("fchmod is unavailable")
+                        patcher = mock.patch.object(
+                            bootstrap.os,
+                            "fchmod",
+                            side_effect=OSError("injected fchmod failure"),
+                        )
+                    elif failure == "fsync":
+                        patcher = mock.patch.object(
+                            bootstrap.os,
+                            "fsync",
+                            side_effect=OSError("injected fsync failure"),
+                        )
+                    else:
+                        patcher = mock.patch.object(
+                            bootstrap.os, "write", return_value=0
+                        )
+                    with patcher:
+                        published = bootstrap._publish_stable_runtime(source, env)
+
+                    self.assertFalse(published["verified"])
+                    self.assertFalse(published["published"])
+                    self.assertEqual(published["publish_error"], "OSError")
+                    runtime_dir = target.parent
+                    self.assertTrue(runtime_dir.is_dir())
+                    self.assertEqual(
+                        list(
+                            runtime_dir.glob(
+                                f".{bootstrap.STABLE_RUNTIME_NAME}.new-*"
+                            )
+                        ),
+                        [],
+                    )
+                    self.assertFalse(target.exists())
 
 
 if __name__ == "__main__":

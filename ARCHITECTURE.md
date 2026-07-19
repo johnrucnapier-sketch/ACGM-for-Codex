@@ -16,8 +16,9 @@ Hook, tool, trust, and data contracts.
 3. Apply recomputes that digest, installs the exact Git marketplace package,
    provisions safe missing governance assets, activates the project, and checks
    local postconditions. Any mismatch stops the flow before the affected write.
-4. Codex copies the selected immutable remote source into its plugin cache. A
-   newly installed plugin is discovered at the next normal task boundary.
+4. Codex copies the selected immutable remote source into its plugin cache.
+   After plugin installation or replacement, the desktop and app-server must be
+   fully restarted before a normal task can prove the new plugin loaded.
 5. The user reviews the exact Hook definitions through `/hooks`; untrusted
    definitions are skipped by Codex. A current client may offer one bulk trust
    action, which is safe only when the pending set contains exclusively this
@@ -36,7 +37,7 @@ Public bootstrap verifies a clean exact release tag and `PACKAGE_MANIFEST.json`,
 then uses the official Git marketplace CLI. It independently verifies the
 resulting marketplace source/ref, plugin identity/version/enabled state, and
 cached package bytes. A fresh install is add/add. The only automatic plugin
-replacement is a digest-bound official RC2/RC3/RC4/0.2-RC1 upgrade after both the old
+replacement is a digest-bound official RC2/RC3/RC4/0.2-RC1/0.2-RC2 upgrade after both the old
 marketplace tag snapshot and sole installed cache match the verified old release;
 its fixed sequence is marketplace remove, exact-ref marketplace add, and plugin
 add. Every step is re-inspected. Because an already-open Codex task retains the
@@ -46,9 +47,15 @@ byte-exact, fail-open two-file bridge for every known official pre-guard version
 including tasks already stale before the upgrade. Current-state
 verification accepts one full target cache plus verified bridges from known old
 official versions; a retained full old cache or altered bridge is still an
-error. Partial failure is reported without a rollback claim. The old personal copy remains development-only, private
-`PLUGIN_DATA` is never adopted, and none of these checks proves that Hooks were
-trusted or ran.
+error. RC3 additionally publishes the manifest-bound runtime to stable
+`PLUGIN_DATA/runtime/acgm_codex.py`. Its install authorization digest binds the
+hashed logical target, expected hash and size, observed preimage/state/hash, and
+whether publication is needed. Only missing, exact, permission-drifted, or
+digest-pinned known-official bytes can be atomically replaced under verified
+user-owned, non-public-writable parents. Partial failure is reported without a
+rollback claim. The old personal copy remains development-only; private Event
+Ledger/HMAC data is never adopted, reset, or moved, and none of these checks
+proves that Hooks were trusted or ran.
 
 Codex CLI 0.144.5 also omits the `scope` field for a user-installed plugin.
 Absence is not treated as user scope by default: it is accepted only when the
@@ -87,7 +94,7 @@ exception: when the recorded
 baseline still matches, the approved plan may update the adapter version and
 baseline without replacing project-owned policy or rotating its activation ID.
 That project-adapter exception accepts only the explicit compatible
-RC2/RC3/RC4/0.2-RC1 set and a strictly older semantic version; unknown and future states
+RC2/RC3/RC4/0.2-RC1/0.2-RC2 set and a strictly older semantic version; unknown and future states
 are not downgraded. A healthy current-version manually activated project can
 adopt only its missing preset decision/snapshot, preserve its activation ID, and
 rebaseline to the exact authorized postimage.
@@ -184,13 +191,17 @@ Hooks handle only mechanically testable subsets:
 | `PreCompact` | Persist only a source-minimized heartbeat before compaction |
 | `Stop` | Continue once when a verification obligation remains open |
 
-Each released command contains its missing-runtime guard inline rather than in
-the versioned cache it protects. If that cache path disappears during a later
-upgrade, the old task returns an empty successful Hook result and stops applying
-ACGM until the task is restarted; it cannot turn a missing executable into a
-repeated Stop/model cycle. With the script present, the wrapper delegates to the
-complete runtime unchanged. This is lifecycle fail-open behavior, not a Lite
-governance mode.
+Each RC3 Hook command addresses the stable `PLUGIN_DATA` runtime instead of a
+versioned cache path. Codex's platform trust hash binds the fixed Hook command;
+it does not independently hash future bytes at that path. The command therefore
+embeds this release's exact runtime SHA-256 and size, opens the target with
+no-follow and nonblocking flags, requires a regular file of that exact size,
+reads once, verifies the digest, and executes those same in-memory bytes. A
+runtime change changes every Hook definition and requires new platform trust.
+Unset `PLUGIN_DATA`, missing or changed bytes, symlinks, FIFOs, and special files
+return an empty successful Hook result and cannot turn a Stop failure into a
+repeated model/Hook cycle. Pre-RC3 version bridges remain only as transition
+recovery. This is lifecycle fail-open behavior, not a Lite governance mode.
 
 `UserPromptSubmit` is intentionally absent: the RC does not need to process raw
 prompts. Transcript parsing is also absent because Codex documents transcript
@@ -293,8 +304,10 @@ written first and sanitized later; they are discarded before persistence.
 - A personal Hook can be disabled and is not an enterprise policy boundary.
 - Hook trust is external Codex state. A package can provide definitions but
   cannot silently trust itself. One-consent quickstart removes redundant ACGM
-  prompts, not Codex's `/hooks` review or normal next-task plugin loading. A
-  bulk trust action must not absorb unrelated pending Hooks.
+  prompts, not Codex's `/hooks` review or the required full desktop restart
+  after plugin changes. The platform trust hash binds the command definition;
+  the embedded hash/size plus digest-bound publication/postflight bind runtime
+  bytes. A bulk trust action must not absorb unrelated pending Hooks.
 - The command recognizer deliberately covers only recognized spellings of five
   categories: hard Git reset, forced Git clean, forced branch deletion, forced
   push, and recursive forced delete. It is not a shell parser. Recognized risky
@@ -317,7 +330,7 @@ written first and sanitized later; they are discarded before persistence.
 Automated fixtures exercise the one-consent plan/apply contract, conservative
 asset adoption, ambiguous-root fail-closed behavior, and first-observed-Hook
 heartbeat. They do not prove installed-platform behavior. The installed-plugin
-E2E for the `0.2.0-rc.2` candidate—including the platform-owned `/hooks` review
+E2E for the `0.2.0-rc.3` candidate—including the platform-owned `/hooks` review
 flow and real Codex tool events in a completely new task—has not yet been
 recorded as passed. No new automatic-Hook claim is promoted to verified platform
 behavior until that checklist is completed.

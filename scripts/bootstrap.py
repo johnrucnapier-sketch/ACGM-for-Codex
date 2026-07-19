@@ -46,6 +46,13 @@ MARKETPLACE_REMOVE = [
     preflight.MARKETPLACE_NAME,
     "--json",
 ]
+STABLE_RUNTIME_PARTS = (
+    "plugins",
+    "data",
+    f"{preflight.PLUGIN_NAME}-{preflight.MARKETPLACE_NAME}",
+    "runtime",
+)
+STABLE_RUNTIME_NAME = "acgm_codex.py"
 
 
 def _rename_directory_noreplace(parent: Path, source: str, destination: str) -> None:
@@ -283,6 +290,294 @@ def _record_old_hook_protection(
     return False
 
 
+def _stable_runtime_evidence(
+    source_root: Path, environment: dict[str, str]
+) -> dict[str, Any]:
+    """Inspect the non-cache Hook runtime without reading other plugin data."""
+
+    source = source_root / "scripts" / STABLE_RUNTIME_NAME
+    target = preflight._codex_home(environment).joinpath(
+        *STABLE_RUNTIME_PARTS, STABLE_RUNTIME_NAME
+    )
+    try:
+        expected = preflight._regular_bytes(source)
+    except (OSError, ValueError):
+        return {
+            "verified": False,
+            "replaceable": False,
+            "state": "source-unavailable",
+        }
+    expected_hash = hashlib.sha256(expected).hexdigest()
+    expected_size = len(expected)
+    path_hash = hashlib.sha256(os.fsencode(str(target))).hexdigest()
+    unsafe_parent = _first_unsafe_stable_runtime_parent(
+        preflight._codex_home(environment)
+    )
+    if unsafe_parent is not None:
+        return {
+            "verified": False,
+            "replaceable": False,
+            "state": "unsafe-parent",
+            "expected_sha256": expected_hash,
+            "expected_size": expected_size,
+            "logical_path_sha256": path_hash,
+            "unsafe_parent_sha256": hashlib.sha256(
+                os.fsencode(str(unsafe_parent))
+            ).hexdigest(),
+        }
+    try:
+        metadata = target.lstat()
+    except FileNotFoundError:
+        return {
+            "verified": False,
+            "replaceable": True,
+            "state": "missing",
+            "expected_sha256": expected_hash,
+            "expected_size": expected_size,
+            "logical_path_sha256": path_hash,
+        }
+    except OSError:
+        return {
+            "verified": False,
+            "replaceable": False,
+            "state": "unavailable",
+            "expected_sha256": expected_hash,
+            "expected_size": expected_size,
+            "logical_path_sha256": path_hash,
+        }
+    if not stat.S_ISREG(metadata.st_mode):
+        return {
+            "verified": False,
+            "replaceable": False,
+            "state": "unsafe-entry",
+            "expected_sha256": expected_hash,
+            "expected_size": expected_size,
+            "logical_path_sha256": path_hash,
+        }
+    try:
+        observed = preflight._regular_bytes(target)
+    except (OSError, ValueError):
+        return {
+            "verified": False,
+            "replaceable": False,
+            "state": "unavailable",
+            "expected_sha256": expected_hash,
+            "expected_size": expected_size,
+            "logical_path_sha256": path_hash,
+        }
+    observed_hash = hashlib.sha256(observed).hexdigest()
+    private_mode = os.name == "nt" or stat.S_IMODE(metadata.st_mode) & 0o077 == 0
+    effective_uid = os.geteuid() if hasattr(os, "geteuid") else None
+    owned_by_current_user = effective_uid is None or (
+        getattr(metadata, "st_uid", None) == effective_uid
+    )
+    if observed == expected and private_mode and owned_by_current_user:
+        state = "verified"
+        verified = True
+        replaceable = True
+    else:
+        known_hashes = {
+            value.get("runtime_sha256")
+            for value in preflight.KNOWN_OFFICIAL_RELEASES.values()
+            if isinstance(value, dict)
+        }
+        replaceable = observed_hash == expected_hash or observed_hash in known_hashes
+        verified = False
+        if observed == expected:
+            state = "permission-drift"
+        elif replaceable:
+            state = "known-official-old-runtime"
+        else:
+            state = "unrecognized-runtime"
+    return {
+        "verified": verified,
+        "replaceable": replaceable,
+        "state": state,
+        "expected_sha256": expected_hash,
+        "expected_size": expected_size,
+        "observed_sha256": observed_hash,
+        "observed_size": len(observed),
+        "logical_path_sha256": path_hash,
+        "private_mode": private_mode,
+        "owned_by_current_user": owned_by_current_user,
+    }
+
+
+def _safe_stable_runtime_directory(metadata: os.stat_result) -> bool:
+    """Accept a real directory owned by this user and not publicly writable."""
+
+    reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    attributes = getattr(metadata, "st_file_attributes", 0)
+    if reparse_flag and attributes & reparse_flag:
+        return False
+    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
+        return False
+    if os.name != "nt" and stat.S_IMODE(metadata.st_mode) & 0o022:
+        return False
+    effective_uid = os.geteuid() if hasattr(os, "geteuid") else None
+    return effective_uid is None or getattr(metadata, "st_uid", None) == effective_uid
+
+
+def _first_unsafe_stable_runtime_parent(codex_home: Path) -> Path | None:
+    """Return the first existing unsafe parent; missing descendants are creatable."""
+
+    current = codex_home
+    for part in (None, *STABLE_RUNTIME_PARTS):
+        if part is not None:
+            current = current / part
+        try:
+            metadata = current.lstat()
+        except FileNotFoundError:
+            return None
+        except OSError:
+            return current
+        if not _safe_stable_runtime_directory(metadata):
+            return current
+    return None
+
+
+def _open_or_create_directory(parent_fd: int, name: str) -> int:
+    """Open one fixed child directory without following a symlink."""
+
+    try:
+        os.mkdir(name, 0o700, dir_fd=parent_fd)
+    except FileExistsError:
+        pass
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(
+        os, "O_NOFOLLOW", 0
+    )
+    descriptor = os.open(name, flags, dir_fd=parent_fd)
+    metadata = os.fstat(descriptor)
+    if not _safe_stable_runtime_directory(metadata):
+        os.close(descriptor)
+        raise OSError("stable runtime parent is unsafe")
+    return descriptor
+
+
+def _read_regular_at(directory_fd: int, name: str) -> bytes | None:
+    """Read one fixed child entry without following links or accepting races."""
+
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_BINARY", 0)
+    )
+    try:
+        descriptor = os.open(name, flags, dir_fd=directory_fd)
+    except FileNotFoundError:
+        return None
+    try:
+        before = os.fstat(descriptor)
+        if not stat.S_ISREG(before.st_mode):
+            raise OSError("stable runtime entry is not a regular file")
+        chunks: list[bytes] = []
+        while True:
+            chunk = os.read(descriptor, 1024 * 1024)
+            if not chunk:
+                break
+            chunks.append(chunk)
+        after = os.fstat(descriptor)
+        if (
+            before.st_size != after.st_size
+            or before.st_mtime_ns != after.st_mtime_ns
+            or before.st_ctime_ns != after.st_ctime_ns
+        ):
+            raise OSError("stable runtime changed while reading")
+        return b"".join(chunks)
+    finally:
+        os.close(descriptor)
+
+
+def _publish_stable_runtime(
+    source_root: Path, environment: dict[str, str]
+) -> dict[str, Any]:
+    """Atomically publish the verified Hook runtime outside the prunable cache."""
+
+    before = _stable_runtime_evidence(source_root, environment)
+    if before.get("verified"):
+        return {**before, "published": False}
+    if not before.get("replaceable"):
+        return {**before, "published": False}
+    try:
+        expected = preflight._regular_bytes(
+            source_root / "scripts" / STABLE_RUNTIME_NAME
+        )
+        codex_home = preflight._codex_home(environment)
+        flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(
+            os, "O_NOFOLLOW", 0
+        )
+        descriptors = [os.open(codex_home, flags)]
+        try:
+            root_metadata = os.fstat(descriptors[0])
+            if not _safe_stable_runtime_directory(root_metadata):
+                raise OSError("Codex profile root is unsafe")
+            for part in STABLE_RUNTIME_PARTS:
+                descriptors.append(_open_or_create_directory(descriptors[-1], part))
+            runtime_fd = descriptors[-1]
+            existing = _read_regular_at(runtime_fd, STABLE_RUNTIME_NAME)
+            allowed_hashes = {
+                value.get("runtime_sha256")
+                for value in preflight.KNOWN_OFFICIAL_RELEASES.values()
+                if isinstance(value, dict)
+            }
+            if existing is not None:
+                existing_hash = hashlib.sha256(existing).hexdigest()
+                if existing != expected and existing_hash not in allowed_hashes:
+                    raise OSError("refusing to replace unrecognized stable runtime")
+            temporary = f".{STABLE_RUNTIME_NAME}.new-{secrets.token_hex(12)}"
+            try:
+                descriptor = os.open(
+                    temporary,
+                    os.O_WRONLY
+                    | os.O_CREAT
+                    | os.O_EXCL
+                    | getattr(os, "O_NOFOLLOW", 0)
+                    | getattr(os, "O_BINARY", 0),
+                    0o600,
+                    dir_fd=runtime_fd,
+                )
+                try:
+                    offset = 0
+                    while offset < len(expected):
+                        written = os.write(descriptor, expected[offset:])
+                        if written <= 0:
+                            raise OSError("stable runtime write made no progress")
+                        offset += written
+                    os.fchmod(descriptor, 0o600)
+                    os.fsync(descriptor)
+                finally:
+                    os.close(descriptor)
+                os.replace(
+                    temporary,
+                    STABLE_RUNTIME_NAME,
+                    src_dir_fd=runtime_fd,
+                    dst_dir_fd=runtime_fd,
+                )
+                os.fsync(runtime_fd)
+            finally:
+                try:
+                    os.unlink(temporary, dir_fd=runtime_fd)
+                except FileNotFoundError:
+                    pass
+        finally:
+            for descriptor in reversed(descriptors):
+                os.close(descriptor)
+    except (OSError, ValueError) as exc:
+        return {
+            **before,
+            "verified": False,
+            "published": False,
+            "publish_error": type(exc).__name__,
+        }
+    after = _stable_runtime_evidence(source_root, environment)
+    return {
+        **after,
+        "published": bool(after.get("verified")),
+        "previous_state": before.get("state"),
+    }
+
+
 def _migration_plan() -> dict[str, Any]:
     return {
         "executable": False,
@@ -359,7 +654,7 @@ def _install_authorization_plan(
         if isinstance(action, dict) and isinstance(action.get("argv"), list)
     ]
     return {
-        "schema": "acgm-codex-install-authorization-plan-v2",
+        "schema": "acgm-codex-install-authorization-plan-v3",
         "source_root": str(source_root),
         "install_target": install_target,
         "version": preflight.VERSION,
@@ -370,6 +665,18 @@ def _install_authorization_plan(
         "source": initial.get("source"),
         "codex": initial.get("codex"),
         "hook_definition_sha256": initial.get("hook_definition_sha256"),
+        "stable_hook_runtime": initial.get("stable_hook_runtime"),
+        "stable_hook_runtime_publication": {
+            "id": "publish_stable_hook_runtime",
+            "required": not bool(
+                isinstance(initial.get("stable_hook_runtime"), dict)
+                and initial["stable_hook_runtime"].get("verified")
+            ),
+            "source": "scripts/acgm_codex.py",
+            "target": "PLUGIN_DATA/runtime/acgm_codex.py",
+            "replacement_policy": "missing-or-digest-pinned-known-official-only",
+            "publication": "private-fsynced-atomic-replace",
+        },
         "lifecycle": initial.get("lifecycle"),
         "error_codes": initial.get("error_codes"),
         "actions": actions,
@@ -450,6 +757,37 @@ def execute(
         dict(env or os.environ)
     )
     initial = preflight.evaluate(source_root, env=environment, runner=runner)
+    stable_runtime = _stable_runtime_evidence(source_root, environment)
+    initial["stable_hook_runtime"] = stable_runtime
+    initial.setdefault("lifecycle", {})["stable_hook_runtime"] = (
+        "VERIFIED" if stable_runtime.get("verified") else "NOT_VERIFIED"
+    )
+    if (
+        initial.get("status") == "INSTALLED_ENABLED_PENDING_HOOK_TRUST"
+        and not stable_runtime.get("verified")
+    ):
+        if stable_runtime.get("replaceable"):
+            initial["status"] = "READY_FOR_STABLE_HOOK_RUNTIME"
+            initial["ok"] = True
+            initial["actions"] = [
+                {
+                    "id": "publish_stable_hook_runtime",
+                    "instruction": (
+                        "Publish the verified ACGM Hook runtime under PLUGIN_DATA; "
+                        "do not use the prunable versioned plugin cache."
+                    ),
+                    "mutates_plugin_data_runtime_only": True,
+                    "requires_explicit_authorization": True,
+                }
+            ]
+            initial["requires_user_action"] = True
+        else:
+            initial["status"] = "BLOCKED"
+            initial["ok"] = False
+            initial["error_codes"] = sorted(
+                set(initial.get("error_codes", []))
+                | {"stable_hook_runtime_unrecognized_or_unsafe"}
+            )
     plan = [
         action
         for action in initial["actions"]
@@ -486,6 +824,7 @@ def execute(
         "READY_FOR_PLUGIN_ADD",
         "READY_FOR_OFFICIAL_UPGRADE",
         "READY_FOR_OFFICIAL_UPGRADE_RECOVERY",
+        "READY_FOR_STABLE_HOOK_RUNTIME",
     }
     if not dry_run and authorized and initial["status"] in mutation_statuses:
         if expected_plan_digest is None:
@@ -615,10 +954,34 @@ def execute(
             payload["lifecycle"] = dict(payload["postflight"]["lifecycle"])
             return payload
 
+    stable_publish = _publish_stable_runtime(source_root, environment)
+    payload["stable_hook_runtime"] = stable_publish
+    if not stable_publish.get("verified"):
+        payload["status"] = "STABLE_HOOK_RUNTIME_PUBLISH_FAILED"
+        payload["partial"] = True
+        payload["postflight"] = preflight.evaluate(
+            source_root, env=environment, runner=runner
+        )
+        payload["postflight"]["stable_hook_runtime"] = stable_publish
+        payload["lifecycle"] = dict(payload["postflight"]["lifecycle"])
+        payload["lifecycle"]["stable_hook_runtime"] = "NOT_VERIFIED"
+        return payload
+
     final = preflight.evaluate(source_root, env=environment, runner=runner)
+    final["stable_hook_runtime"] = _stable_runtime_evidence(
+        source_root, environment
+    )
+    final.setdefault("lifecycle", {})["stable_hook_runtime"] = (
+        "VERIFIED"
+        if final["stable_hook_runtime"].get("verified")
+        else "NOT_VERIFIED"
+    )
     payload["postflight"] = final
     payload["lifecycle"] = dict(final["lifecycle"])
-    if final["status"] != "INSTALLED_ENABLED_PENDING_HOOK_TRUST":
+    if (
+        final["status"] != "INSTALLED_ENABLED_PENDING_HOOK_TRUST"
+        or not final["stable_hook_runtime"].get("verified")
+    ):
         payload["status"] = "INSTALL_COMMANDS_FINISHED_BUT_VERIFICATION_FAILED"
         payload["partial"] = True
         return payload

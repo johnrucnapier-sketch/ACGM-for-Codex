@@ -30,9 +30,16 @@ SKILL_VALIDATOR = (
     / "scripts"
     / "quick_validate.py"
 )
+DEFAULT_CHECK_TIMEOUT_SECONDS = 120
+UNITTEST_TIMEOUT_SECONDS = 300
 
 
-def run(name: str, command: list[str]) -> dict[str, Any]:
+def run(
+    name: str,
+    command: list[str],
+    *,
+    timeout_seconds: int = DEFAULT_CHECK_TIMEOUT_SECONDS,
+) -> dict[str, Any]:
     try:
         completed = subprocess.run(
             command,
@@ -41,7 +48,7 @@ def run(name: str, command: list[str]) -> dict[str, Any]:
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            timeout=120,
+            timeout=timeout_seconds,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         return {
@@ -145,6 +152,7 @@ def main(argv: list[str] | None = None) -> int:
                 "test_*.py",
                 "-v",
             ],
+            timeout_seconds=UNITTEST_TIMEOUT_SECONDS,
         )
     )
 

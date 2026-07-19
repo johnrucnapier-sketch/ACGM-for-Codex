@@ -33,7 +33,7 @@ Set up governance automatically without replacing project-owned instructions or 
 The installed `acgm-codex quickstart` command governs one project after the
 plugin is present. When operating from the official release repository,
 `python3 scripts/quickstart.py` is the combined installer: it also installs a
-fresh plugin or upgrades one exactly verified official RC2/RC3/RC4/0.2-RC1 installation
+fresh plugin or upgrades one exactly verified official RC2/RC3/RC4/0.2-RC1/0.2-RC2 installation
 under the same digest-bound authorization.
 
 1. Run `acgm-codex quickstart plan <verified-git-root> --json` through the resolved entry point. This phase must remain read-only.
@@ -53,12 +53,12 @@ under the same digest-bound authorization.
 
 Use `acgm-codex init <verified-git-root>` only when the user explicitly requests custom governance rather than the recommended preset, or when quickstart reports an existing-policy conflict. Preserve all existing files and prepare a bounded proposal for the user-owned content.
 
-Project quickstart authorization covers only local non-overwriting governance setup. The repository-level combined installer additionally covers its exact planned Codex marketplace/plugin writes, the narrow verified official RC2/RC3/RC4/0.2-RC1 replacement, and digest-bound roll-forward of a completely verified interrupted official transition. Neither form authorizes a release, deployment, unrelated destructive action, credential change, legacy/personal migration, private data adoption, or unknown conflict resolution.
+Project quickstart authorization covers only local non-overwriting governance setup. The repository-level combined installer additionally covers its exact planned Codex marketplace/plugin writes, the manifest- and digest-bound stable Hook runtime publication, the narrow verified official RC2/RC3/RC4/0.2-RC1/0.2-RC2 replacement, and digest-bound roll-forward of a completely verified interrupted official transition. Neither form authorizes a release, deployment, unrelated destructive action, credential change, legacy/personal migration, private data adoption, or unknown conflict resolution.
 
 ## Activate and verify
 
 1. Quickstart performs activation and a non-strict doctor check automatically. Confirm `project_state=GOVERNED`.
-2. If Codex presents `/hooks`, the user must personally review the exact definitions; neither the skill nor installer may bypass that boundary. When the pending set contains only this verified ACGM release and Codex offers **Trust all and continue**, the user may accept the bundle in one platform action. Never bulk-trust unrelated or unknown Hooks.
+2. After a plugin install or replacement, fully quit and reopen Codex desktop. Then, if Codex presents `/hooks`, the user must personally review the exact definitions; neither the skill nor installer may bypass that boundary. When the pending set contains only this verified ACGM release and Codex offers **Trust all and continue**, the user may accept the bundle in one platform action. Never bulk-trust unrelated or unknown Hooks.
 3. After trust, continue normal work. The first actually observed ACGM Hook records the current activation heartbeat; a separate artificial verification task is not required.
 4. Run `acgm-codex quickstart status <verified-git-root> --json` or strict doctor after the first observed Hook. Report `AWAITING_PLATFORM_HOOK_ACCEPTANCE` as pending platform acceptance, not as failed project setup.
 5. Recheck `git status --short --branch` and summarize the exact files created, replaced from known stock placeholders, or preserved.

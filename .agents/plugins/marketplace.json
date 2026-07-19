@@ -9,7 +9,7 @@
       "source": {
         "source": "url",
         "url": "https://github.com/johnrucnapier-sketch/ACGM-for-Codex.git",
-        "ref": "v0.2.0-rc.2"
+        "ref": "v0.2.0-rc.3"
       },
       "policy": {
         "installation": "AVAILABLE",

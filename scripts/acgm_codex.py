@@ -33,17 +33,7 @@ except ImportError:  # pragma: no cover - the supported platforms provide it.
     fcntl = None  # type: ignore[assignment]
 
 
-def _read_version() -> str:
-    try:
-        value = (Path(__file__).resolve().parent.parent / "VERSION").read_text(
-            encoding="utf-8"
-        ).strip()
-    except OSError:
-        return "unknown"
-    return value or "unknown"
-
-
-VERSION = _read_version()
+VERSION = "0.2.0-rc.3"
 STATE_SCHEMA = "acgm-codex-state-v1"
 LEDGER_SCHEMA = "acgm-codex-event-v1"
 CASE_SCHEMA = "acgm-codex-case-v1"
@@ -55,6 +45,8 @@ QUICKSTART_COMPATIBLE_STATE_VERSIONS = (
     "0.1.0-rc.2",
     "0.1.0-rc.3",
     "0.1.0-rc.4",
+    "0.2.0-rc.1",
+    "0.2.0-rc.2",
 )
 QUICKSTART_MANAGED_DIRECTORIES = (
     ".acgm",

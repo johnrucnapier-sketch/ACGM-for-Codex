@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -c \"import os,runpy,sys;p=sys.argv[1];sys.argv=sys.argv[1:];runpy.run_path(p,run_name='__main__') if os.path.isfile(p) else print('{}')\" \"${PLUGIN_ROOT}/scripts/acgm_codex.py\" hook session-start",
+            "command": "python3 -c \"import hashlib,os,stat,sys\nd=os.environ.get('PLUGIN_DATA')\np=os.path.join(d,'runtime','acgm_codex.py') if d else ''\ne=160823\nb=None\ntry:\n f=os.open(p,os.O_RDONLY|getattr(os,'O_NOFOLLOW',0)|getattr(os,'O_NONBLOCK',0))\n with os.fdopen(f,'rb') as h:\n  s=os.fstat(h.fileno())\n  if stat.S_ISREG(s.st_mode) and s.st_size==e:\n   b=h.read(e+1)\nexcept OSError:\n pass\nif b is not None and len(b)==e and hashlib.sha256(b).hexdigest()=='c81e1566ceb63bd1e2326201d11fc9469e5c0619f0314ebcb5eb2f649386931d':\n sys.argv=[p,*sys.argv[1:]]\n exec(compile(b,p,'exec'),{'__name__':'__main__','__file__':p,'__package__':None,'__cached__':None})\nelse:\n print('{}')\" hook session-start",
             "timeout": 10,
             "statusMessage": "ACGM is grounding the Codex session"
           }
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -c \"import os,runpy,sys;p=sys.argv[1];sys.argv=sys.argv[1:];runpy.run_path(p,run_name='__main__') if os.path.isfile(p) else print('{}')\" \"${PLUGIN_ROOT}/scripts/acgm_codex.py\" hook subagent-start",
+            "command": "python3 -c \"import hashlib,os,stat,sys\nd=os.environ.get('PLUGIN_DATA')\np=os.path.join(d,'runtime','acgm_codex.py') if d else ''\ne=160823\nb=None\ntry:\n f=os.open(p,os.O_RDONLY|getattr(os,'O_NOFOLLOW',0)|getattr(os,'O_NONBLOCK',0))\n with os.fdopen(f,'rb') as h:\n  s=os.fstat(h.fileno())\n  if stat.S_ISREG(s.st_mode) and s.st_size==e:\n   b=h.read(e+1)\nexcept OSError:\n pass\nif b is not None and len(b)==e and hashlib.sha256(b).hexdigest()=='c81e1566ceb63bd1e2326201d11fc9469e5c0619f0314ebcb5eb2f649386931d':\n sys.argv=[p,*sys.argv[1:]]\n exec(compile(b,p,'exec'),{'__name__':'__main__','__file__':p,'__package__':None,'__cached__':None})\nelse:\n print('{}')\" hook subagent-start",
             "timeout": 5,
             "statusMessage": "ACGM is grounding the Codex subagent"
           }
@@ -31,7 +31,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -c \"import os,runpy,sys;p=sys.argv[1];sys.argv=sys.argv[1:];runpy.run_path(p,run_name='__main__') if os.path.isfile(p) else print('{}')\" \"${PLUGIN_ROOT}/scripts/acgm_codex.py\" hook pre-tool",
+            "command": "python3 -c \"import hashlib,os,stat,sys\nd=os.environ.get('PLUGIN_DATA')\np=os.path.join(d,'runtime','acgm_codex.py') if d else ''\ne=160823\nb=None\ntry:\n f=os.open(p,os.O_RDONLY|getattr(os,'O_NOFOLLOW',0)|getattr(os,'O_NONBLOCK',0))\n with os.fdopen(f,'rb') as h:\n  s=os.fstat(h.fileno())\n  if stat.S_ISREG(s.st_mode) and s.st_size==e:\n   b=h.read(e+1)\nexcept OSError:\n pass\nif b is not None and len(b)==e and hashlib.sha256(b).hexdigest()=='c81e1566ceb63bd1e2326201d11fc9469e5c0619f0314ebcb5eb2f649386931d':\n sys.argv=[p,*sys.argv[1:]]\n exec(compile(b,p,'exec'),{'__name__':'__main__','__file__':p,'__package__':None,'__cached__':None})\nelse:\n print('{}')\" hook pre-tool",
             "timeout": 5,
             "statusMessage": "ACGM is checking the planned tool use"
           }
@@ -44,7 +44,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -c \"import os,runpy,sys;p=sys.argv[1];sys.argv=sys.argv[1:];runpy.run_path(p,run_name='__main__') if os.path.isfile(p) else print('{}')\" \"${PLUGIN_ROOT}/scripts/acgm_codex.py\" hook permission-request",
+            "command": "python3 -c \"import hashlib,os,stat,sys\nd=os.environ.get('PLUGIN_DATA')\np=os.path.join(d,'runtime','acgm_codex.py') if d else ''\ne=160823\nb=None\ntry:\n f=os.open(p,os.O_RDONLY|getattr(os,'O_NOFOLLOW',0)|getattr(os,'O_NONBLOCK',0))\n with os.fdopen(f,'rb') as h:\n  s=os.fstat(h.fileno())\n  if stat.S_ISREG(s.st_mode) and s.st_size==e:\n   b=h.read(e+1)\nexcept OSError:\n pass\nif b is not None and len(b)==e and hashlib.sha256(b).hexdigest()=='c81e1566ceb63bd1e2326201d11fc9469e5c0619f0314ebcb5eb2f649386931d':\n sys.argv=[p,*sys.argv[1:]]\n exec(compile(b,p,'exec'),{'__name__':'__main__','__file__':p,'__package__':None,'__cached__':None})\nelse:\n print('{}')\" hook permission-request",
             "timeout": 5,
             "statusMessage": "ACGM is recording the permission boundary"
           }
@@ -57,7 +57,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -c \"import os,runpy,sys;p=sys.argv[1];sys.argv=sys.argv[1:];runpy.run_path(p,run_name='__main__') if os.path.isfile(p) else print('{}')\" \"${PLUGIN_ROOT}/scripts/acgm_codex.py\" hook post-tool",
+            "command": "python3 -c \"import hashlib,os,stat,sys\nd=os.environ.get('PLUGIN_DATA')\np=os.path.join(d,'runtime','acgm_codex.py') if d else ''\ne=160823\nb=None\ntry:\n f=os.open(p,os.O_RDONLY|getattr(os,'O_NOFOLLOW',0)|getattr(os,'O_NONBLOCK',0))\n with os.fdopen(f,'rb') as h:\n  s=os.fstat(h.fileno())\n  if stat.S_ISREG(s.st_mode) and s.st_size==e:\n   b=h.read(e+1)\nexcept OSError:\n pass\nif b is not None and len(b)==e and hashlib.sha256(b).hexdigest()=='c81e1566ceb63bd1e2326201d11fc9469e5c0619f0314ebcb5eb2f649386931d':\n sys.argv=[p,*sys.argv[1:]]\n exec(compile(b,p,'exec'),{'__name__':'__main__','__file__':p,'__package__':None,'__cached__':None})\nelse:\n print('{}')\" hook post-tool",
             "timeout": 5,
             "statusMessage": "ACGM is recording the completed tool use"
           }
@@ -70,7 +70,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -c \"import os,runpy,sys;p=sys.argv[1];sys.argv=sys.argv[1:];runpy.run_path(p,run_name='__main__') if os.path.isfile(p) else print('{}')\" \"${PLUGIN_ROOT}/scripts/acgm_codex.py\" hook pre-compact",
+            "command": "python3 -c \"import hashlib,os,stat,sys\nd=os.environ.get('PLUGIN_DATA')\np=os.path.join(d,'runtime','acgm_codex.py') if d else ''\ne=160823\nb=None\ntry:\n f=os.open(p,os.O_RDONLY|getattr(os,'O_NOFOLLOW',0)|getattr(os,'O_NONBLOCK',0))\n with os.fdopen(f,'rb') as h:\n  s=os.fstat(h.fileno())\n  if stat.S_ISREG(s.st_mode) and s.st_size==e:\n   b=h.read(e+1)\nexcept OSError:\n pass\nif b is not None and len(b)==e and hashlib.sha256(b).hexdigest()=='c81e1566ceb63bd1e2326201d11fc9469e5c0619f0314ebcb5eb2f649386931d':\n sys.argv=[p,*sys.argv[1:]]\n exec(compile(b,p,'exec'),{'__name__':'__main__','__file__':p,'__package__':None,'__cached__':None})\nelse:\n print('{}')\" hook pre-compact",
             "timeout": 10,
             "statusMessage": "ACGM is preserving governance state before compaction"
           }
@@ -82,7 +82,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -c \"import os,runpy,sys;p=sys.argv[1];sys.argv=sys.argv[1:];runpy.run_path(p,run_name='__main__') if os.path.isfile(p) else print('{}')\" \"${PLUGIN_ROOT}/scripts/acgm_codex.py\" hook stop",
+            "command": "python3 -c \"import hashlib,os,stat,sys\nd=os.environ.get('PLUGIN_DATA')\np=os.path.join(d,'runtime','acgm_codex.py') if d else ''\ne=160823\nb=None\ntry:\n f=os.open(p,os.O_RDONLY|getattr(os,'O_NOFOLLOW',0)|getattr(os,'O_NONBLOCK',0))\n with os.fdopen(f,'rb') as h:\n  s=os.fstat(h.fileno())\n  if stat.S_ISREG(s.st_mode) and s.st_size==e:\n   b=h.read(e+1)\nexcept OSError:\n pass\nif b is not None and len(b)==e and hashlib.sha256(b).hexdigest()=='c81e1566ceb63bd1e2326201d11fc9469e5c0619f0314ebcb5eb2f649386931d':\n sys.argv=[p,*sys.argv[1:]]\n exec(compile(b,p,'exec'),{'__name__':'__main__','__file__':p,'__package__':None,'__cached__':None})\nelse:\n print('{}')\" hook stop",
             "timeout": 10,
             "statusMessage": "ACGM is closing the local governance record"
           }

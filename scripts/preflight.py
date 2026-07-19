@@ -29,8 +29,8 @@ PLUGIN_NAME = "acgm-codex"
 MARKETPLACE_NAME = "acgm-codex"
 PLUGIN_ID = f"{PLUGIN_NAME}@{MARKETPLACE_NAME}"
 LEGACY_PLUGIN_ID = f"{PLUGIN_NAME}@personal"
-VERSION = "0.2.0-rc.2"
-TAG = "v0.2.0-rc.2"
+VERSION = "0.2.0-rc.3"
+TAG = "v0.2.0-rc.3"
 REPOSITORY = "johnrucnapier-sketch/ACGM-for-Codex"
 REPOSITORY_URL = "https://github.com/johnrucnapier-sketch/ACGM-for-Codex.git"
 SOURCE_ROOT = Path(__file__).resolve().parents[1]
@@ -51,7 +51,13 @@ RC_VERSION = re.compile(
     r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-rc\.(0|[1-9]\d*)$"
 )
 KNOWN_OFFICIAL_UPGRADE_VERSIONS = frozenset(
-    {"0.1.0-rc.2", "0.1.0-rc.3", "0.1.0-rc.4", "0.2.0-rc.1"}
+    {
+        "0.1.0-rc.2",
+        "0.1.0-rc.3",
+        "0.1.0-rc.4",
+        "0.2.0-rc.1",
+        "0.2.0-rc.2",
+    }
 )
 KNOWN_OFFICIAL_RELEASES = {
     "0.1.0-rc.2": {
@@ -69,6 +75,11 @@ KNOWN_OFFICIAL_RELEASES = {
     "0.2.0-rc.1": {
         "revision": "ef036b7308af295f61902ee392b452347ffd1c81",
         "manifest_sha256": "34eac875510513d1a13af9a8da3a9486fbdde35c5949349744174648443c07c3",
+    },
+    "0.2.0-rc.2": {
+        "revision": "d9489e07b1db87545f745520ec22fa5b041e9a75",
+        "manifest_sha256": "f940941a8fb0487681e1e72ac559ac43870f3d09ca0d0257fe872c9fceb3f3d8",
+        "runtime_sha256": "3a0865a3f2944005baa48ae442d46e334f2c875b24801b5ba6b5a94901ad2451",
     },
 }
 EXCLUDED_PARTS = {".git", ".acgm", ".venv", "__pycache__", "build", "dist"}
@@ -183,7 +194,12 @@ def _regular_bytes(path: Path) -> bytes:
     before = path.lstat()
     if not stat.S_ISREG(before.st_mode):
         raise ValueError("not_regular")
-    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0)
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_BINARY", 0)
+    )
     descriptor = os.open(path, flags)
     try:
         current = os.fstat(descriptor)
