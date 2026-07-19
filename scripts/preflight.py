@@ -29,14 +29,21 @@ PLUGIN_NAME = "acgm-codex"
 MARKETPLACE_NAME = "acgm-codex"
 PLUGIN_ID = f"{PLUGIN_NAME}@{MARKETPLACE_NAME}"
 LEGACY_PLUGIN_ID = f"{PLUGIN_NAME}@personal"
-VERSION = "0.2.0-rc.1"
-TAG = "v0.2.0-rc.1"
+VERSION = "0.2.0-rc.2"
+TAG = "v0.2.0-rc.2"
 REPOSITORY = "johnrucnapier-sketch/ACGM-for-Codex"
 REPOSITORY_URL = "https://github.com/johnrucnapier-sketch/ACGM-for-Codex.git"
 SOURCE_ROOT = Path(__file__).resolve().parents[1]
 MANIFEST_NAME = "PACKAGE_MANIFEST.json"
 CODEX_MARKETPLACE_METADATA = ".codex-marketplace-install.json"
 MAX_CODEX_MARKETPLACE_METADATA_BYTES = 8192
+HOOK_BRIDGE_MARKER = ".acgm-hook-bridge.json"
+HOOK_BRIDGE_SCHEMA = "acgm-codex-hook-bridge-v1"
+HOOK_BRIDGE_SCRIPT = b'''#!/usr/bin/env python3
+"""Fail-open bridge for Hook definitions retained by an older Codex task."""
+
+print("{}")
+'''
 MINIMUM_PYTHON = (3, 10)
 SUPPORTED_PLATFORMS = {"Darwin", "Linux"}
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -44,7 +51,7 @@ RC_VERSION = re.compile(
     r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-rc\.(0|[1-9]\d*)$"
 )
 KNOWN_OFFICIAL_UPGRADE_VERSIONS = frozenset(
-    {"0.1.0-rc.2", "0.1.0-rc.3", "0.1.0-rc.4"}
+    {"0.1.0-rc.2", "0.1.0-rc.3", "0.1.0-rc.4", "0.2.0-rc.1"}
 )
 KNOWN_OFFICIAL_RELEASES = {
     "0.1.0-rc.2": {
@@ -58,6 +65,10 @@ KNOWN_OFFICIAL_RELEASES = {
     "0.1.0-rc.4": {
         "revision": "06623a95df96b3ced9759e6434d096ab8c66fb5f",
         "manifest_sha256": "227d52be85d1c6c4104a4018c5a7b4c49f536f54c9365181db3c31edad66cab3",
+    },
+    "0.2.0-rc.1": {
+        "revision": "ef036b7308af295f61902ee392b452347ffd1c81",
+        "manifest_sha256": "34eac875510513d1a13af9a8da3a9486fbdde35c5949349744174648443c07c3",
     },
 }
 EXCLUDED_PARTS = {".git", ".acgm", ".venv", "__pycache__", "build", "dist"}
@@ -249,15 +260,53 @@ def _known_official_upgrade(version: object, ref: object) -> bool:
     )
 
 
+def _official_transition_target(
+    installed_version: object, installed_ref: object
+) -> tuple[str, str] | None:
+    """Return a verified-order candidate for Codex's upgrade re-association.
+
+    Codex may keep an older installed version/cache while rewriting the
+    installed entry's source ref to the newly added marketplace ref.  This
+    helper recognizes only a forward transition between pinned official
+    releases and never treats an equal, newer, or unknown version as safe.
+    Runtime bytes are verified separately before the transition is actionable.
+    """
+
+    installed_order = _rc_version_order(installed_version)
+    target_order = _rc_version_order(VERSION)
+    if (
+        not isinstance(installed_version, str)
+        or installed_version not in KNOWN_OFFICIAL_UPGRADE_VERSIONS
+        or not isinstance(installed_ref, str)
+        or not installed_ref.startswith("v")
+        or installed_order is None
+        or target_order is None
+    ):
+        return None
+    transition_version = installed_ref[1:]
+    transition_order = _rc_version_order(transition_version)
+    if (
+        transition_order is None
+        or not installed_order < transition_order <= target_order
+        or (
+            transition_version != VERSION
+            and transition_version not in KNOWN_OFFICIAL_RELEASES
+        )
+    ):
+        return None
+    return transition_version, installed_ref
+
+
 def _codex_marketplace_metadata(
     root: Path, *, expected_tag: str, expected_revision: str | None
 ) -> dict[str, Any]:
-    """Verify the sole untracked metadata file created by the Codex CLI.
+    """Verify optional platform metadata created by some Codex CLI builds.
 
     This file is platform-owned rather than release-owned, so it is not part of
-    ``PACKAGE_MANIFEST.json``.  It is allowed only at the marketplace checkout
-    root and only when every identity field binds it to the already verified
-    checkout revision.
+    ``PACKAGE_MANIFEST.json``.  Current Codex builds do not always create it for
+    a clean Git marketplace checkout.  Absence is therefore a valid observable
+    state; when present, every identity field must bind it to the independently
+    verified checkout revision.
     """
 
     errors: list[str] = []
@@ -272,11 +321,13 @@ def _codex_marketplace_metadata(
         payload = json.loads(raw.decode("utf-8"))
     except FileNotFoundError:
         return {
+            "present": False,
             "verified": False,
-            "error_codes": ["codex_marketplace_metadata_missing"],
+            "error_codes": [],
         }
     except (OSError, ValueError, UnicodeDecodeError, json.JSONDecodeError):
         return {
+            "present": True,
             "verified": False,
             "error_codes": ["codex_marketplace_metadata_invalid"],
         }
@@ -306,6 +357,7 @@ def _codex_marketplace_metadata(
         ):
             errors.append("codex_marketplace_metadata_revision_mismatch")
     return {
+        "present": True,
         "verified": not errors,
         "error_codes": sorted(set(errors)),
         "revision": payload.get("revision") if isinstance(payload, dict) else None,
@@ -401,6 +453,7 @@ def _manifest_inventory(
         elif tagged_manifest.stdout.encode("utf-8") != manifest_bytes:
             errors.append("package_manifest_not_exact_release_tag")
     if exact_filesystem_inventory:
+        codex_metadata_present = False
         codex_metadata_verified = False
         codex_metadata_sha256: str | None = None
         codex_metadata_revision: str | None = None
@@ -440,10 +493,12 @@ def _manifest_inventory(
                 if tag.returncode == 0 and revision == tag.stdout.strip()
                 else None,
             )
+            codex_metadata_present = bool(metadata_check["present"])
             codex_metadata_verified = bool(metadata_check["verified"])
             codex_metadata_sha256 = metadata_check.get("sha256")
             codex_metadata_revision = revision
-            errors.extend(metadata_check["error_codes"])
+            if codex_metadata_present:
+                errors.extend(metadata_check["error_codes"])
         actual: set[str] = set()
         expected_directories = {
             PurePosixPath(*PurePosixPath(name).parts[:depth]).as_posix()
@@ -536,10 +591,13 @@ def _manifest_inventory(
                 expected_tag=expected_tag,
                 expected_revision=codex_metadata_revision,
             )
-            if (
+            metadata_changed = bool(final_metadata["present"]) != codex_metadata_present
+            if codex_metadata_present and (
                 not final_metadata["verified"]
                 or final_metadata.get("sha256") != codex_metadata_sha256
             ):
+                metadata_changed = True
+            if metadata_changed:
                 errors.append("codex_marketplace_metadata_changed_during_verification")
     return not errors, sorted(set(errors)), files, manifest_bytes
 
@@ -620,7 +678,7 @@ def _git_source(
     runner: Runner,
     *,
     expected_tag: str = TAG,
-    require_codex_marketplace_metadata: bool = False,
+    allow_codex_marketplace_metadata: bool = False,
 ) -> dict[str, Any]:
     facts: dict[str, Any] = {"verified": False, "error_codes": []}
     safe_env = git_environment(env)
@@ -686,19 +744,22 @@ def _git_source(
     tag_value = tag.stdout.strip() if tag.returncode == 0 else None
     metadata_check: dict[str, Any] | None = None
     status_allowed = status.returncode == 0 and not bool(status.stdout.strip())
-    if require_codex_marketplace_metadata:
+    if allow_codex_marketplace_metadata:
         metadata_check = _codex_marketplace_metadata(
             root,
             expected_tag=expected_tag,
             expected_revision=head_value if head_value == tag_value else None,
         )
-        facts["error_codes"].extend(metadata_check["error_codes"])
-        status_allowed = bool(
-            status.returncode == 0
-            and metadata_check["verified"]
-            and status.stdout.splitlines()
-            == [f"?? {CODEX_MARKETPLACE_METADATA}"]
-        )
+        if metadata_check["present"]:
+            facts["error_codes"].extend(metadata_check["error_codes"])
+            status_allowed = bool(
+                status.returncode == 0
+                and metadata_check["verified"]
+                and status.stdout.splitlines()
+                == [f"?? {CODEX_MARKETPLACE_METADATA}"]
+            )
+        else:
+            status_allowed = status.returncode == 0 and not bool(status.stdout.strip())
     if status.returncode != 0:
         facts["error_codes"].append("git_status_unavailable")
     elif not status_allowed:
@@ -843,8 +904,80 @@ def _toml_multiline_after_line(line: str, active: str | None) -> str | None:
     return None
 
 
+def _codex_config_snapshot(codex_home: Path) -> dict[str, Any]:
+    """Read one stable, non-symlink config snapshot for all profile evidence."""
+
+    path = codex_home / "config.toml"
+    try:
+        before = path.lstat()
+        raw = _regular_bytes(path)
+        after = path.lstat()
+    except FileNotFoundError:
+        return {
+            "present": False,
+            "verified": True,
+            "raw": None,
+            "identity": None,
+            "sha256": None,
+            "error_codes": [],
+        }
+    except (OSError, ValueError):
+        return {
+            "present": True,
+            "verified": False,
+            "raw": None,
+            "identity": None,
+            "sha256": None,
+            "error_codes": ["codex_config_missing_unreadable_or_unsafe"],
+        }
+    identity = {
+        "device": after.st_dev,
+        "inode": after.st_ino,
+        "mode": after.st_mode,
+        "size": after.st_size,
+        "mtime_ns": after.st_mtime_ns,
+        "ctime_ns": after.st_ctime_ns,
+    }
+    if (
+        before.st_dev != after.st_dev
+        or before.st_ino != after.st_ino
+        or before.st_mode != after.st_mode
+    ):
+        return {
+            "present": True,
+            "verified": False,
+            "raw": None,
+            "identity": identity,
+            "sha256": None,
+            "error_codes": ["codex_config_changed_while_reading"],
+        }
+    return {
+        "present": True,
+        "verified": True,
+        "raw": raw,
+        "identity": identity,
+        "sha256": hashlib.sha256(raw).hexdigest(),
+        "error_codes": [],
+    }
+
+
+def _same_codex_config_snapshot(
+    before: dict[str, Any], after: dict[str, Any]
+) -> bool:
+    return bool(
+        before.get("verified")
+        and after.get("verified")
+        and before.get("present") == after.get("present")
+        and before.get("identity") == after.get("identity")
+        and before.get("sha256") == after.get("sha256")
+    )
+
+
 def _marketplace_config_evidence(
-    codex_home: Path, *, expected_ref: str = TAG
+    codex_home: Path,
+    *,
+    expected_ref: str = TAG,
+    config_snapshot: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Read only the simple table shape currently emitted by the Codex CLI.
 
@@ -855,9 +988,13 @@ def _marketplace_config_evidence(
     """
 
     errors: list[str] = []
+    snapshot = config_snapshot or _codex_config_snapshot(codex_home)
     try:
-        text = _regular_bytes(codex_home / "config.toml").decode("utf-8")
-    except (OSError, ValueError, UnicodeDecodeError):
+        raw = snapshot.get("raw")
+        if not snapshot.get("verified") or not isinstance(raw, bytes):
+            raise ValueError("config unavailable")
+        text = raw.decode("utf-8")
+    except (ValueError, UnicodeDecodeError):
         return {
             "verified": False,
             "error_codes": ["marketplace_config_missing_or_unreadable"],
@@ -916,6 +1053,80 @@ def _marketplace_config_evidence(
     }
 
 
+def _plugin_profile_config_evidence(
+    codex_home: Path,
+    *,
+    config_snapshot: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Verify that the exact plugin is enabled in the effective user profile.
+
+    Codex CLI 0.144.5 omits ``scope`` from user-installed plugin JSON.  We do
+    not infer user scope from absence alone: the omission is accepted only when
+    the exact plugin table is present in the already bound ``CODEX_HOME``
+    config.  Explicit null or another scope remains invalid.
+    """
+
+    errors: list[str] = []
+    snapshot = config_snapshot or _codex_config_snapshot(codex_home)
+    try:
+        raw = snapshot.get("raw")
+        if not snapshot.get("verified") or not isinstance(raw, bytes):
+            raise ValueError("config unavailable")
+        text = raw.decode("utf-8")
+    except (ValueError, UnicodeDecodeError):
+        return {
+            "verified": False,
+            "error_codes": ["plugin_profile_config_missing_or_unreadable"],
+            "enabled": False,
+        }
+    header_pattern = re.compile(r"^\s*\[\s*([^\]]+?)\s*\]\s*(?:#.*)?$")
+    assignment_pattern = re.compile(
+        r"^\s*([A-Za-z_][A-Za-z0-9_-]*)\s*=\s*(true|false)\s*(?:#.*)?$"
+    )
+    target_header = f'plugins."{PLUGIN_ID}"'
+    section_count = 0
+    in_target = False
+    multiline: str | None = None
+    values: dict[str, bool] = {}
+    for raw_line in text.splitlines():
+        if multiline is not None:
+            multiline = _toml_multiline_after_line(raw_line, multiline)
+            continue
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        header = header_pattern.fullmatch(raw_line)
+        if header:
+            in_target = header.group(1).strip() == target_header
+            if in_target:
+                section_count += 1
+            continue
+        if not in_target:
+            multiline = _toml_multiline_after_line(raw_line, None)
+            continue
+        assignment = assignment_pattern.fullmatch(raw_line)
+        if assignment is None:
+            errors.append("plugin_profile_config_target_table_shape_invalid")
+            multiline = _toml_multiline_after_line(raw_line, None)
+            continue
+        key, raw_value = assignment.groups()
+        if key in values:
+            errors.append("plugin_profile_config_duplicate_key")
+            continue
+        values[key] = raw_value == "true"
+    if multiline is not None:
+        errors.append("plugin_profile_config_unterminated_multiline_value")
+    if section_count != 1:
+        errors.append("plugin_profile_config_section_missing_or_duplicate")
+    if set(values) != {"enabled"} or values.get("enabled") is not True:
+        errors.append("plugin_profile_config_not_exact_enabled")
+    return {
+        "verified": not errors,
+        "error_codes": sorted(set(errors)),
+        "enabled": values.get("enabled") is True,
+    }
+
+
 def _marketplace_runtime_evidence(
     item: dict[str, Any],
     *,
@@ -925,6 +1136,7 @@ def _marketplace_runtime_evidence(
     expected_version: str = VERSION,
     expected_ref: str = TAG,
     require_source_manifest_match: bool = True,
+    config_snapshot: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Verify config plus the exact cached checkout, independent of CLI claims."""
 
@@ -943,7 +1155,11 @@ def _marketplace_runtime_evidence(
     if not root_matches:
         errors.append("marketplace_snapshot_root_missing_or_unexpected")
 
-    config = _marketplace_config_evidence(codex_home, expected_ref=expected_ref)
+    config = _marketplace_config_evidence(
+        codex_home,
+        expected_ref=expected_ref,
+        config_snapshot=config_snapshot,
+    )
     errors.extend(config["error_codes"])
     if root_matches:
         git = _git_source(
@@ -951,7 +1167,7 @@ def _marketplace_runtime_evidence(
             env,
             runner,
             expected_tag=expected_ref,
-            require_codex_marketplace_metadata=True,
+            allow_codex_marketplace_metadata=True,
         )
         package = verify_package(
             cache_root,
@@ -985,10 +1201,74 @@ def _marketplace_runtime_evidence(
             same_manifest = False
         if require_source_manifest_match and not same_manifest:
             errors.append("marketplace_snapshot_manifest_differs_from_source")
+
+        # Re-read the complete Git and package evidence after every other
+        # marketplace check.  This binds optional metadata, ignored filesystem
+        # entries, tracked bytes, HEAD/tag, and origin through the end of the
+        # runtime proof instead of trusting an earlier passing snapshot.
+        final_git = _git_source(
+            cache_root,
+            env,
+            runner,
+            expected_tag=expected_ref,
+            allow_codex_marketplace_metadata=True,
+        )
+        final_package = verify_package(
+            cache_root,
+            exact_git_inventory=True,
+            exact_filesystem_inventory=True,
+            allow_codex_marketplace_metadata=True,
+            expected_version=expected_version,
+            expected_tag=expected_ref,
+        )
+        errors.extend(
+            f"snapshot_final_{code}" for code in final_git["error_codes"]
+        )
+        errors.extend(
+            f"snapshot_final_{code}"
+            for code in final_package["error_codes"]
+        )
+        initial_metadata = git.get("codex_marketplace_metadata")
+        final_metadata = final_git.get("codex_marketplace_metadata")
+        metadata_keys = ("present", "verified", "sha256", "revision")
+        if not (
+            isinstance(initial_metadata, dict)
+            and isinstance(final_metadata, dict)
+            and all(
+                initial_metadata.get(key) == final_metadata.get(key)
+                for key in metadata_keys
+            )
+        ):
+            errors.append(
+                "snapshot_marketplace_metadata_changed_after_verification"
+            )
+        if any(
+            final_git.get(key) != git.get(key)
+            for key in ("head", "tag", "clean", "origin_matches")
+        ):
+            errors.append("snapshot_git_identity_changed_after_verification")
+        if final_package.get("manifest_sha256") != package.get(
+            "manifest_sha256"
+        ):
+            errors.append("snapshot_package_changed_after_verification")
+        if known_release is not None:
+            if final_git.get("head") != known_release["revision"]:
+                errors.append(
+                    "snapshot_final_known_official_revision_mismatch"
+                )
+            if (
+                final_package.get("manifest_sha256")
+                != known_release["manifest_sha256"]
+            ):
+                errors.append(
+                    "snapshot_final_known_official_manifest_mismatch"
+                )
     else:
         git = {"verified": False}
         package = {"verified": False}
         release_contract = {"verified": False}
+        final_git = {"verified": False}
+        final_package = {"verified": False}
         same_manifest = False
     return {
         "verified": not errors,
@@ -1002,6 +1282,8 @@ def _marketplace_runtime_evidence(
             else None
         ),
         "package_verified": bool(package.get("verified")),
+        "final_git_verified": bool(final_git.get("verified")),
+        "final_package_verified": bool(final_package.get("verified")),
         "release_contract_verified": bool(release_contract.get("verified")),
         "manifest_matches_source": same_manifest
         if require_source_manifest_match
@@ -1031,10 +1313,62 @@ def _plugin_source_exact(item: dict[str, Any], *, expected_ref: str = TAG) -> bo
     )
 
 
+def hook_bridge_marker_bytes(from_version: str, target_version: str) -> bytes:
+    """Return the canonical marker for one runtime-created Hook bridge."""
+
+    payload = {
+        "from_version": from_version,
+        "schema": HOOK_BRIDGE_SCHEMA,
+        "script_sha256": hashlib.sha256(HOOK_BRIDGE_SCRIPT).hexdigest(),
+        "target_version": target_version,
+    }
+    return (
+        json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        + "\n"
+    ).encode("utf-8")
+
+
+def _hook_bridge_verified(
+    root: Path, *, from_version: str, target_version: str
+) -> bool:
+    """Accept only the two-file bridge shape emitted by bootstrap."""
+
+    if (
+        from_version not in KNOWN_OFFICIAL_UPGRADE_VERSIONS
+        or from_version == target_version
+    ):
+        return False
+    try:
+        root_entries = {entry.name: entry for entry in root.iterdir()}
+        if set(root_entries) != {HOOK_BRIDGE_MARKER, "scripts"}:
+            return False
+        scripts = root_entries["scripts"]
+        scripts_metadata = scripts.lstat()
+        if stat.S_ISLNK(scripts_metadata.st_mode) or not stat.S_ISDIR(
+            scripts_metadata.st_mode
+        ):
+            return False
+        script_entries = {entry.name: entry for entry in scripts.iterdir()}
+        if set(script_entries) != {"acgm_codex.py"}:
+            return False
+        marker = root_entries[HOOK_BRIDGE_MARKER]
+        script = script_entries["acgm_codex.py"]
+        return bool(
+            _regular_bytes(marker)
+            == hook_bridge_marker_bytes(from_version, target_version)
+            and _regular_bytes(script) == HOOK_BRIDGE_SCRIPT
+        )
+    except (OSError, ValueError):
+        return False
+
+
 def _plugin_cache_inventory(
-    codex_home: Path, *, expected_version: str
+    codex_home: Path,
+    *,
+    expected_version: str,
+    allowed_bridge_targets: Sequence[str] | None = None,
 ) -> dict[str, Any]:
-    """Verify that the installed plugin has one regular version directory only."""
+    """Verify one full cache plus exact fail-open bridges for live old tasks."""
 
     root = codex_home / "plugins" / "cache" / MARKETPLACE_NAME / PLUGIN_NAME
     try:
@@ -1043,10 +1377,13 @@ def _plugin_cache_inventory(
         return {
             "verified": False,
             "versions": [],
+            "hook_bridges": [],
             "error_codes": ["installed_cache_inventory_unavailable"],
         }
     versions: list[str] = []
+    hook_bridges: list[str] = []
     errors: list[str] = []
+    bridge_targets = tuple(allowed_bridge_targets or (expected_version,))
     for entry in entries:
         try:
             metadata = entry.lstat()
@@ -1056,12 +1393,25 @@ def _plugin_cache_inventory(
         if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
             errors.append("installed_cache_version_entry_unsafe")
             continue
-        versions.append(entry.name)
+        if entry.name == expected_version:
+            versions.append(entry.name)
+        elif any(
+            _hook_bridge_verified(
+                entry,
+                from_version=entry.name,
+                target_version=target_version,
+            )
+            for target_version in bridge_targets
+        ):
+            hook_bridges.append(entry.name)
+        else:
+            errors.append("installed_cache_version_entry_unrecognized")
     if sorted(versions) != [expected_version]:
         errors.append("installed_cache_version_set_mismatch")
     return {
         "verified": not errors,
         "versions": sorted(versions),
+        "hook_bridges": sorted(hook_bridges),
         "error_codes": sorted(set(errors)),
     }
 
@@ -1147,15 +1497,23 @@ def inspect_codex_state(
         if installed_item and isinstance(installed_item.get("source"), dict)
         else None
     )
+    codex_home = _codex_home(env)
+    config_snapshot = _codex_config_snapshot(codex_home)
     old_ref = (
         installed_ref
         if _known_official_upgrade(installed_version, installed_ref)
         else None
     )
+    transition_target = _official_transition_target(
+        installed_version, installed_ref
+    )
+    transition_version = transition_target[0] if transition_target else None
+    transition_ref = transition_target[1] if transition_target else None
 
     marketplace_evidence: dict[str, Any] | None = None
     target_runtime_verified = False
     old_runtime_verified = False
+    transition_runtime_verified = False
     marketplace_ref_omitted = bool(
         len(marketplace_matches) == 1
         and _marketplace_reported_ref(marketplace_matches[0]) is None
@@ -1163,8 +1521,14 @@ def inspect_codex_state(
     if len(marketplace_matches) == 1 and _marketplace_identity_exact(
         marketplace_matches[0]
     ):
-        evidence_version = installed_version if old_ref else VERSION
-        evidence_ref = old_ref or TAG
+        evidence_version = (
+            installed_version
+            if old_ref
+            else transition_version
+            if transition_ref
+            else VERSION
+        )
+        evidence_ref = old_ref or transition_ref or TAG
         marketplace_evidence = _marketplace_runtime_evidence(
             marketplace_matches[0],
             source_root=source_root,
@@ -1172,10 +1536,17 @@ def inspect_codex_state(
             runner=runner,
             expected_version=str(evidence_version),
             expected_ref=evidence_ref,
-            require_source_manifest_match=old_ref is None,
+            require_source_manifest_match=evidence_version == VERSION,
+            config_snapshot=config_snapshot,
         )
         if old_ref:
             old_runtime_verified = bool(marketplace_evidence["verified"])
+        elif transition_ref:
+            transition_runtime_verified = bool(
+                marketplace_evidence["verified"]
+            )
+            if transition_ref == TAG:
+                target_runtime_verified = transition_runtime_verified
         else:
             target_runtime_verified = bool(marketplace_evidence["verified"])
 
@@ -1199,10 +1570,24 @@ def inspect_codex_state(
             for item in marketplace_matches
         )
     )
+    transition_marketplace_exact = bool(
+        transition_ref
+        and marketplace_matches
+        and all(
+            _marketplace_exact(
+                item,
+                transition_runtime_verified,
+                expected_ref=transition_ref,
+            )
+            for item in marketplace_matches
+        )
+    )
     if target_marketplace_exact:
         marketplace_state = "EXACT"
     elif old_marketplace_exact:
         marketplace_state = "OFFICIAL_OLD"
+    elif transition_marketplace_exact:
+        marketplace_state = "OFFICIAL_UPGRADE_TRANSITION"
     elif marketplace_matches:
         marketplace_state = "CONFLICT"
     else:
@@ -1226,6 +1611,21 @@ def inspect_codex_state(
     if installed_item is not None and exact_available:
         errors.append("installed_and_available_plugin_duplicate")
 
+    plugin_profile_config = _plugin_profile_config_evidence(
+        codex_home, config_snapshot=config_snapshot
+    )
+    installed_scope = installed_item.get("scope") if installed_item else None
+    installed_scope_is_user = bool(
+        installed_item is not None
+        and (
+            installed_scope == "user"
+            or (
+                "scope" not in installed_item
+                and plugin_profile_config["verified"]
+            )
+        )
+    )
+
     def installed_contract(expected_version: str, expected_ref: str) -> bool:
         return bool(
             installed_item is not None
@@ -1236,7 +1636,8 @@ def inspect_codex_state(
             and installed_item.get("enabled") is True
             and installed_item.get("installPolicy") == "AVAILABLE"
             and installed_item.get("authPolicy") == "ON_INSTALL"
-            and installed_item.get("scope") in {None, "user"}
+            and installed_scope_is_user
+            and plugin_profile_config["verified"]
             and _plugin_source_exact(installed_item, expected_ref=expected_ref)
         )
 
@@ -1246,6 +1647,11 @@ def inspect_codex_state(
         and isinstance(old_ref, str)
         and installed_contract(installed_version, old_ref)
     )
+    transition_installed_contract = bool(
+        isinstance(installed_version, str)
+        and isinstance(transition_ref, str)
+        and installed_contract(installed_version, transition_ref)
+    )
     official_upgrade_base = bool(
         old_installed_contract
         and old_marketplace_exact
@@ -1254,13 +1660,28 @@ def inspect_codex_state(
         and not foreign_plugins
         and len(marketplace_matches) == 1
     )
+    official_transition_base = bool(
+        transition_installed_contract
+        and transition_marketplace_exact
+        and len(exact_installed) == 1
+        and not exact_available
+        and not foreign_plugins
+        and len(marketplace_matches) == 1
+    )
     if installed_item is not None and not (
-        current_installed_contract or official_upgrade_base
+        current_installed_contract
+        or official_upgrade_base
+        or official_transition_base
     ):
         errors.append("installed_plugin_identity_version_or_source_conflict")
     if installed_item is not None and not (
         (current_installed_contract and marketplace_state == "EXACT")
         or (official_upgrade_base and marketplace_state == "OFFICIAL_OLD")
+        or (
+            official_transition_base
+            and marketplace_state
+            in {"EXACT", "OFFICIAL_UPGRADE_TRANSITION"}
+        )
     ):
         errors.append("installed_plugin_marketplace_missing_or_not_exact")
 
@@ -1297,10 +1718,14 @@ def inspect_codex_state(
     cache_verified = False
     cache_check: dict[str, Any] | None = None
     official_upgrade_ready = False
+    official_transition_ready = False
     if installed_item is not None and not errors:
-        codex_home = _codex_home(env)
         cache_version = str(installed_version)
-        cache_ref = old_ref or TAG
+        cache_ref = (
+            f"v{cache_version}"
+            if official_transition_base
+            else old_ref or TAG
+        )
         cache = codex_home / "plugins" / "cache" / MARKETPLACE_NAME / PLUGIN_NAME / cache_version
         cache_git_present = False
         cache_git_errors: list[str] = []
@@ -1341,7 +1766,11 @@ def inspect_codex_state(
             expected_tag=cache_ref,
         )
         inventory_check = _plugin_cache_inventory(
-            codex_home, expected_version=cache_version
+            codex_home,
+            expected_version=cache_version,
+            allowed_bridge_targets=(cache_version, VERSION)
+            if official_transition_base
+            else (cache_version,),
         )
         try:
             cache_manifest = _regular_bytes(cache / MANIFEST_NAME)
@@ -1364,6 +1793,33 @@ def inspect_codex_state(
             *release_check["error_codes"],
             *inventory_check["error_codes"],
         ]
+        known_cache_release = (
+            KNOWN_OFFICIAL_RELEASES.get(cache_version)
+            if official_upgrade_base or official_transition_base
+            else None
+        )
+        if official_upgrade_base or official_transition_base:
+            if known_cache_release is None:
+                cache_errors.append("installed_cache_known_release_missing")
+            else:
+                if (
+                    package_check.get("manifest_sha256")
+                    != known_cache_release["manifest_sha256"]
+                ):
+                    cache_errors.append(
+                        "installed_cache_known_official_manifest_mismatch"
+                    )
+                if (
+                    cache_git_present
+                    and (
+                        not isinstance(cache_git_check, dict)
+                        or cache_git_check.get("head")
+                        != known_cache_release["revision"]
+                    )
+                ):
+                    cache_errors.append(
+                        "installed_cache_known_official_revision_mismatch"
+                    )
         if current_installed_contract and not same_manifest:
             cache_errors.append("installed_cache_manifest_differs_from_source")
         if official_upgrade_base and not same_marketplace_manifest:
@@ -1384,19 +1840,45 @@ def inspect_codex_state(
             "manifest_matches_marketplace_snapshot": same_marketplace_manifest
             if official_upgrade_base
             else None,
+            "known_official_release_pinned": bool(
+                known_cache_release is not None
+                and package_check.get("manifest_sha256")
+                == known_cache_release["manifest_sha256"]
+                and (
+                    not cache_git_present
+                    or (
+                        isinstance(cache_git_check, dict)
+                        and cache_git_check.get("head")
+                        == known_cache_release["revision"]
+                    )
+                )
+            )
+            if official_upgrade_base or official_transition_base
+            else None,
         }
         cache_verified = bool(cache_check["verified"])
         if not cache_verified:
             errors.append(
                 "official_upgrade_cache_unverified"
-                if official_upgrade_base
+                if official_upgrade_base or official_transition_base
                 else "installed_cache_bytes_unverified"
             )
         elif official_upgrade_base:
             official_upgrade_ready = True
+        elif official_transition_base:
+            official_transition_ready = True
+
+    final_config_snapshot = _codex_config_snapshot(codex_home)
+    config_unchanged = _same_codex_config_snapshot(
+        config_snapshot, final_config_snapshot
+    )
+    if not config_unchanged:
+        errors.append("codex_config_changed_during_verification")
 
     if official_upgrade_ready and not errors:
         plugin_state = "INSTALLED_ENABLED_OFFICIAL_OLD"
+    elif official_transition_ready and not errors:
+        plugin_state = "INSTALLED_ENABLED_OFFICIAL_UPGRADE_TRANSITION"
     elif installed_item is not None and not errors:
         plugin_state = "INSTALLED_ENABLED_EXACT"
     elif installed_item is not None:
@@ -1415,6 +1897,21 @@ def inspect_codex_state(
         "cache_verified": cache_verified,
         "cache_check": cache_check,
         "legacy_personal_present": legacy,
+        "plugin_profile_config": plugin_profile_config,
+        "codex_config_snapshot": {
+            "verified": bool(config_snapshot.get("verified")),
+            "present": bool(config_snapshot.get("present")),
+            "sha256": config_snapshot.get("sha256"),
+            "unchanged": config_unchanged,
+            "error_codes": sorted(
+                set(
+                    [
+                        *config_snapshot.get("error_codes", []),
+                        *final_config_snapshot.get("error_codes", []),
+                    ]
+                )
+            ),
+        },
         "marketplace_runtime_evidence": marketplace_evidence,
         "official_upgrade": {
             "eligible": official_upgrade_ready and not errors,
@@ -1422,15 +1919,68 @@ def inspect_codex_state(
             "from_ref": old_ref if official_upgrade_ready else None,
             "to_version": VERSION,
             "to_ref": TAG,
-            "scope": installed_item.get("scope", "user")
+            "scope": "user"
             if official_upgrade_ready and installed_item is not None
+            else None,
+        },
+        "official_upgrade_transition": {
+            "recoverable": official_transition_ready and not errors,
+            "from_version": installed_version
+            if official_transition_ready
+            else None,
+            "from_ref": f"v{installed_version}"
+            if official_transition_ready
+            else None,
+            "observed_version": transition_version
+            if official_transition_ready
+            else None,
+            "observed_ref": transition_ref
+            if official_transition_ready
+            else None,
+            "to_version": VERSION,
+            "to_ref": TAG,
+            "scope": "user"
+            if official_transition_ready and installed_item is not None
+            else None,
+            "strategy": (
+                "PLUGIN_ADD_ONLY"
+                if transition_ref == TAG
+                else "RESTART_TO_CURRENT"
+            )
+            if official_transition_ready
+            else None,
+            "cache_manifest_sha256": cache_check.get("manifest_sha256")
+            if official_transition_ready and isinstance(cache_check, dict)
             else None,
         },
     }
 
 
-def _actions(status: str, hook_hash: str | None) -> list[dict[str, Any]]:
-    if status == "READY_FOR_OFFICIAL_UPGRADE":
+def _actions(
+    status: str,
+    hook_hash: str | None,
+    codex_state: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    transition = (
+        codex_state.get("official_upgrade_transition", {})
+        if isinstance(codex_state, dict)
+        else {}
+    )
+    if status == "READY_FOR_OFFICIAL_UPGRADE_RECOVERY" and transition.get(
+        "strategy"
+    ) == "PLUGIN_ADD_ONLY":
+        return [
+            {
+                "id": "resume_exact_official_plugin_install",
+                "argv": ["codex", "plugin", "add", PLUGIN_ID, "--json"],
+                "mutates_user_config": True,
+                "requires_explicit_authorization": True,
+            }
+        ]
+    if status in {
+        "READY_FOR_OFFICIAL_UPGRADE",
+        "READY_FOR_OFFICIAL_UPGRADE_RECOVERY",
+    }:
         return [
             {
                 "id": "remove_known_old_official_marketplace",
@@ -1620,6 +2170,8 @@ def evaluate(
         status = "BLOCKED"
     elif any(code in conflict_codes for code in unique_errors):
         status = "MIGRATION_REQUIRED"
+    elif codex_state.get("official_upgrade_transition", {}).get("recoverable"):
+        status = "READY_FOR_OFFICIAL_UPGRADE_RECOVERY"
     elif codex_state.get("official_upgrade", {}).get("eligible"):
         status = "READY_FOR_OFFICIAL_UPGRADE"
     elif codex_state["plugin"] == "INSTALLED_ENABLED_EXACT" and codex_state["cache_verified"]:
@@ -1647,14 +2199,18 @@ def evaluate(
         "heartbeat": "FIRST_TRUSTED_HOOK_AUTO_COMPLETES" if status == "INSTALLED_ENABLED_PENDING_HOOK_TRUST" else "NOT_REACHED",
         "project_bootstrap": "ONE_CONSENT_QUICKSTART_EXACT_TARGET",
         "official_upgrade": codex_state.get("official_upgrade"),
+        "official_upgrade_transition": codex_state.get(
+            "official_upgrade_transition"
+        ),
     }
-    actions = _actions(status, hook_hash)
+    actions = _actions(status, hook_hash, codex_state)
     return {
         "schema": "acgm-codex-preflight-v1",
         "ok": status in {
             "READY_FOR_INSTALL",
             "READY_FOR_PLUGIN_ADD",
             "READY_FOR_OFFICIAL_UPGRADE",
+            "READY_FOR_OFFICIAL_UPGRADE_RECOVERY",
             "INSTALLED_ENABLED_PENDING_HOOK_TRUST",
         },
         "status": status,

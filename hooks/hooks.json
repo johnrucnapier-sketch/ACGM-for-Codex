@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${PLUGIN_ROOT}/scripts/acgm_codex.py\" hook session-start",
+            "command": "python3 -c \"import os,runpy,sys;p=sys.argv[1];sys.argv=sys.argv[1:];runpy.run_path(p,run_name='__main__') if os.path.isfile(p) else print('{}')\" \"${PLUGIN_ROOT}/scripts/acgm_codex.py\" hook session-start",
             "timeout": 10,
             "statusMessage": "ACGM is grounding the Codex session"
           }
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${PLUGIN_ROOT}/scripts/acgm_codex.py\" hook subagent-start",
+            "command": "python3 -c \"import os,runpy,sys;p=sys.argv[1];sys.argv=sys.argv[1:];runpy.run_path(p,run_name='__main__') if os.path.isfile(p) else print('{}')\" \"${PLUGIN_ROOT}/scripts/acgm_codex.py\" hook subagent-start",
             "timeout": 5,
             "statusMessage": "ACGM is grounding the Codex subagent"
           }
@@ -31,7 +31,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${PLUGIN_ROOT}/scripts/acgm_codex.py\" hook pre-tool",
+            "command": "python3 -c \"import os,runpy,sys;p=sys.argv[1];sys.argv=sys.argv[1:];runpy.run_path(p,run_name='__main__') if os.path.isfile(p) else print('{}')\" \"${PLUGIN_ROOT}/scripts/acgm_codex.py\" hook pre-tool",
             "timeout": 5,
             "statusMessage": "ACGM is checking the planned tool use"
           }
@@ -44,7 +44,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${PLUGIN_ROOT}/scripts/acgm_codex.py\" hook permission-request",
+            "command": "python3 -c \"import os,runpy,sys;p=sys.argv[1];sys.argv=sys.argv[1:];runpy.run_path(p,run_name='__main__') if os.path.isfile(p) else print('{}')\" \"${PLUGIN_ROOT}/scripts/acgm_codex.py\" hook permission-request",
             "timeout": 5,
             "statusMessage": "ACGM is recording the permission boundary"
           }
@@ -57,7 +57,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${PLUGIN_ROOT}/scripts/acgm_codex.py\" hook post-tool",
+            "command": "python3 -c \"import os,runpy,sys;p=sys.argv[1];sys.argv=sys.argv[1:];runpy.run_path(p,run_name='__main__') if os.path.isfile(p) else print('{}')\" \"${PLUGIN_ROOT}/scripts/acgm_codex.py\" hook post-tool",
             "timeout": 5,
             "statusMessage": "ACGM is recording the completed tool use"
           }
@@ -70,7 +70,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${PLUGIN_ROOT}/scripts/acgm_codex.py\" hook pre-compact",
+            "command": "python3 -c \"import os,runpy,sys;p=sys.argv[1];sys.argv=sys.argv[1:];runpy.run_path(p,run_name='__main__') if os.path.isfile(p) else print('{}')\" \"${PLUGIN_ROOT}/scripts/acgm_codex.py\" hook pre-compact",
             "timeout": 10,
             "statusMessage": "ACGM is preserving governance state before compaction"
           }
@@ -82,7 +82,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${PLUGIN_ROOT}/scripts/acgm_codex.py\" hook stop",
+            "command": "python3 -c \"import os,runpy,sys;p=sys.argv[1];sys.argv=sys.argv[1:];runpy.run_path(p,run_name='__main__') if os.path.isfile(p) else print('{}')\" \"${PLUGIN_ROOT}/scripts/acgm_codex.py\" hook stop",
             "timeout": 10,
             "statusMessage": "ACGM is closing the local governance record"
           }

@@ -25,14 +25,18 @@ When the user explicitly asks to install or update ACGM for Codex:
 4. Never remove, replace, merge, or adopt `acgm-codex@personal`, duplicate
    installs, unknown sources, another scope, newer/unknown versions, or private
    `PLUGIN_DATA` / Event Ledger content. The sole plugin-upgrade exception is one
-   enabled user-scope official RC2/RC3/RC4 whose exact old source/ref/policy,
+   enabled user-scope official RC2/RC3/RC4/0.2-RC1 whose exact old source/ref/policy,
    marketplace snapshot, bytes, and sole cache entry all verify. The plan digest
    must explicitly include the fixed marketplace remove, exact-ref add, and
-   plugin add sequence. Report the manual migration plan for every other state.
+   plugin add sequence. A fully verified interrupted official transition may be
+   resumed or rolled forward only under a newly generated exact digest. Report
+   the manual migration plan for every unknown or mismatched state.
 5. Quickstart automatically creates missing `standard-v1` governance assets,
    replaces only byte-identical ACGM stock placeholders, preserves unknown
    existing policy, activates the exact project, and verifies local
    postconditions.
+   The Agent carries the digest from plan to apply; never ask the user to copy
+   it, hand-edit Codex config, or hand-write governance files.
 6. In the next normal Codex task, the user must personally review `/hooks`.
    When the pending set contains only the exact verified ACGM definitions and
    Codex offers **Trust all and continue**, that one platform action may trust

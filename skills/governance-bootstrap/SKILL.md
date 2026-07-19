@@ -33,7 +33,7 @@ Set up governance automatically without replacing project-owned instructions or 
 The installed `acgm-codex quickstart` command governs one project after the
 plugin is present. When operating from the official release repository,
 `python3 scripts/quickstart.py` is the combined installer: it also installs a
-fresh plugin or upgrades one exactly verified official RC2/RC3/RC4 installation
+fresh plugin or upgrades one exactly verified official RC2/RC3/RC4/0.2-RC1 installation
 under the same digest-bound authorization.
 
 1. Run `acgm-codex quickstart plan <verified-git-root> --json` through the resolved entry point. This phase must remain read-only.
@@ -44,6 +44,8 @@ under the same digest-bound authorization.
    - activates this exact Git root; and
    - runs local postcondition checks.
 3. Run `acgm-codex quickstart apply <verified-git-root> --plan-digest <digest> --authorize --json`.
+   The Agent copies the machine-generated digest internally; the user does not
+   type it, edit config, or hand-write Constitution/ADR/snapshot files.
 4. Preserve every unknown existing `AGENTS.md`, Constitution, scope, decision, and snapshot. If the plan reports a conflict, stop before mutation and explain the exact file; never weaken or silently overwrite project policy.
 5. Confirm the result is either `COMPLETE` or `AWAITING_PLATFORM_HOOK_ACCEPTANCE`. Do not equate installed files with verified activation.
 
@@ -51,7 +53,7 @@ under the same digest-bound authorization.
 
 Use `acgm-codex init <verified-git-root>` only when the user explicitly requests custom governance rather than the recommended preset, or when quickstart reports an existing-policy conflict. Preserve all existing files and prepare a bounded proposal for the user-owned content.
 
-Project quickstart authorization covers only local non-overwriting governance setup. The repository-level combined installer additionally covers its exact planned Codex marketplace/plugin writes and the narrow verified official RC2/RC3/RC4 replacement. Neither form authorizes a release, deployment, unrelated destructive action, credential change, legacy/personal migration, private data adoption, or conflict resolution.
+Project quickstart authorization covers only local non-overwriting governance setup. The repository-level combined installer additionally covers its exact planned Codex marketplace/plugin writes, the narrow verified official RC2/RC3/RC4/0.2-RC1 replacement, and digest-bound roll-forward of a completely verified interrupted official transition. Neither form authorizes a release, deployment, unrelated destructive action, credential change, legacy/personal migration, private data adoption, or unknown conflict resolution.
 
 ## Activate and verify
 

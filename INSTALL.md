@@ -1,7 +1,7 @@
 # ACGM for Codex one-consent installation / 一次授权安装
 
-Public candidate: **`0.2.0-rc.1`**, immutable source tag:
-**`v0.2.0-rc.1`**.
+Public candidate: **`0.2.0-rc.2`**, immutable source tag:
+**`v0.2.0-rc.2`**.
 
 ACGM uses the official Codex Git marketplace. It never hand-edits Codex
 `config.toml`, never copies private Event Ledger data, and never silently
@@ -23,7 +23,7 @@ The Agent performs:
 
 ```bash
 ACGM_SOURCE="$(mktemp -d)/ACGM-for-Codex"
-git clone --branch v0.2.0-rc.1 --depth 1 \
+git clone --branch v0.2.0-rc.2 --depth 1 \
   https://github.com/johnrucnapier-sketch/ACGM-for-Codex.git "$ACGM_SOURCE"
 python3 "$ACGM_SOURCE/scripts/quickstart.py" \
   --project /absolute/path/to/the/exact/project \
@@ -55,10 +55,18 @@ scope、ADR 或 snapshot，也不重复询问同一授权。
 3. for a fresh install, runs only the two fixed official Codex installation
    commands;
 4. as the sole plugin-upgrade exception, can replace one enabled user-scope
-   official `0.1.0-rc.2`, `0.1.0-rc.3`, or `0.1.0-rc.4` whose repository, ref,
+   official `0.1.0-rc.2`, `0.1.0-rc.3`, `0.1.0-rc.4`, or `0.2.0-rc.1` whose repository, ref,
    policy, marketplace snapshot, package bytes, and sole cache entry all verify;
+   a CLI-omitted scope is accepted only through the exact enabled plugin table
+   in the already bound user `CODEX_HOME`, never by absence alone;
    the fixed sequence is marketplace remove, exact-ref marketplace add, then
-   plugin add;
+   plugin add. A rigorously verified Codex re-association or interrupted prior
+   official transition is resumed or rolled forward under a new exact digest;
+   throughout that replacement, the verified installed version path remains
+   executable and every known official pre-guard version receives an exact
+   bridge, including paths retained by tasks already stale before this upgrade.
+   The final cache contains the full target release plus only those exact
+   fail-open bridges; a retained full old release or altered bridge is rejected;
 5. verifies source/ref, enabled version, and cached package bytes;
 6. requires the explicit quickstart target to be the exact Git project root and
    refuses parent containers rather than guessing a child. Runtime Hooks have a
@@ -72,7 +80,7 @@ scope、ADR 或 snapshot，也不重复询问同一授权。
    `init` flow;
 10. safely adopts the preset into a healthy already-active project when only the
     missing preset decision/snapshot must be added, and allows project adapter
-    upgrades only from the explicit compatible RC2/RC3/RC4 set—not from unknown
+    upgrades only from the explicit compatible RC2/RC3/RC4/0.2-RC1 set—not from unknown
     or newer versions;
 11. activates the project without rotating an already-valid activation;
 12. runs local doctor postconditions and records a private progress receipt for
@@ -107,6 +115,9 @@ acgm-codex quickstart status /absolute/path/to/project --json
 or `acgm-codex doctor /absolute/path/to/project --strict` to obtain `COMPLETE`.
 Newly installed plugins still load at Codex task boundaries, so the user starts
 the next normal work task rather than following a separate multi-task ceremony.
+An open task from the replaced version may continue safely through its bridge,
+but ACGM is intentionally inactive in that stale task after the old full runtime
+is gone. Restart that task to load the complete current runtime.
 
 ## Safety and conflict rules / 冲突边界
 
@@ -115,7 +126,7 @@ One-consent quickstart is intentionally narrow. It does not authorize or perform
 - removal, migration, or adoption of `acgm-codex@personal`;
 - replacement of duplicate, unknown-source, wrong-scope, newer, unrecognized,
   or otherwise wrong-version installs. The only exception is the exact verified
-  official user-level RC2/RC3/RC4 upgrade described above;
+  official user-level RC2/RC3/RC4/0.2-RC1 upgrade described above;
 - overwriting an unknown Constitution, `AGENTS.md`, scope, decision, or snapshot;
 - overwriting an unknown `.acgm/quickstart.json` receipt, absorbing a concurrent
   Git/index/governance change into the activation baseline, or downgrading an
@@ -127,8 +138,10 @@ One-consent quickstart is intentionally narrow. It does not authorize or perform
 Those states fail before project writes or return an explicit partial-state
 receipt. A changed plan, Git identity, asset hash, source, tag, scope, command,
 installed version, or verified cache/snapshot evidence invalidates the original
-grant. An interrupted official upgrade is re-inspected and reported as partial;
-the installer never claims it rolled back private or external state.
+grant. A uniquely verified interrupted official upgrade requires a new current
+digest and can then be resumed or rolled forward automatically; any mismatch
+remains partial/manual-review state. The installer never claims it rolled back
+private or external state.
 If plugin installation succeeds but the project root changes or becomes
 unreadable before project apply, the combined result is
 `PROJECT_RECHECK_REQUIRED` with `partial=true`, not a traceback or a false

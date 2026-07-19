@@ -18,6 +18,9 @@ import bootstrap  # noqa: E402
 import preflight  # noqa: E402
 
 
+_UNSET = object()
+
+
 def command(argv: list[str], cwd: Path) -> None:
     subprocess.run(argv, cwd=cwd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
@@ -213,31 +216,43 @@ class FakeCodex:
     def marketplace_root(self) -> Path:
         return self.codex_home / ".tmp" / "marketplaces" / preflight.MARKETPLACE_NAME
 
-    def add_marketplace(self) -> None:
-        self.marketplace_root.parent.mkdir(parents=True, exist_ok=True)
-        if self.marketplace_root.exists():
-            shutil.rmtree(self.marketplace_root)
-        shutil.copytree(self.source, self.marketplace_root)
-        write_codex_marketplace_metadata(self.marketplace_root, preflight.TAG)
-        self.codex_home.mkdir(parents=True, exist_ok=True)
+    def _write_config(self) -> None:
+        lines: list[str] = []
+        if self.installed:
+            lines.extend(
+                [
+                    f'[plugins."{preflight.PLUGIN_ID}"]',
+                    "enabled = true",
+                    "",
+                ]
+            )
         source = (
             "https://github.com/unknown/source.git"
             if self.marketplace_conflict
             else preflight.REPOSITORY_URL
         )
         ref = "main" if self.marketplace_conflict else preflight.TAG
-        (self.codex_home / "config.toml").write_text(
-            "\n".join(
-                [
-                    f"[marketplaces.{preflight.MARKETPLACE_NAME}]",
-                    'source_type = "git"',
-                    f'source = "{source}"',
-                    f'ref = "{ref}"',
-                    "",
-                ]
-            ),
-            encoding="utf-8",
+        lines.extend(
+            [
+                f"[marketplaces.{preflight.MARKETPLACE_NAME}]",
+                'source_type = "git"',
+                f'source = "{source}"',
+                f'ref = "{ref}"',
+                "",
+            ]
         )
+        self.codex_home.mkdir(parents=True, exist_ok=True)
+        (self.codex_home / "config.toml").write_text(
+            "\n".join(lines), encoding="utf-8"
+        )
+
+    def add_marketplace(self) -> None:
+        self.marketplace_root.parent.mkdir(parents=True, exist_ok=True)
+        if self.marketplace_root.exists():
+            shutil.rmtree(self.marketplace_root)
+        shutil.copytree(self.source, self.marketplace_root)
+        write_codex_marketplace_metadata(self.marketplace_root, preflight.TAG)
+        self._write_config()
         self.marketplace = True
 
     def __call__(
@@ -370,6 +385,7 @@ class FakeCodex:
             if self.plugin_failure:
                 return preflight.CommandResult(8, stderr="fixture failure")
             self.installed = True
+            self._write_config()
             cache = (
                 Path(self.env["CODEX_HOME"])
                 / "plugins"
@@ -466,6 +482,18 @@ class ObservedCodex0144:
             shutil.rmtree(cache)
         shutil.copytree(self.source, cache)
         self.installed = True
+        config = self.codex_home / "config.toml"
+        config.write_text(
+            "\n".join(
+                [
+                    f'[plugins."{preflight.PLUGIN_ID}"]',
+                    "enabled = true",
+                    "",
+                ]
+            )
+            + config.read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
 
     def __call__(
         self, argv: list[str] | tuple[str, ...], cwd: Path | None, env: dict[str, str], timeout: int
@@ -569,6 +597,13 @@ class OfficialUpgradeCodex:
         plugin_failure: bool = False,
         remove_no_effect: bool = False,
         retain_old_cache: bool = False,
+        reassociate_on_add: bool = False,
+        transition_wrong_ref: bool = False,
+        transition_cache_tamper: bool = False,
+        transition_scope_override: object = _UNSET,
+        transition_wrong_policy: bool = False,
+        transition_wrong_source: bool = False,
+        transition_duplicate: bool = False,
     ) -> None:
         self.current_source = current_source
         self.old_source = old_source
@@ -581,10 +616,21 @@ class OfficialUpgradeCodex:
         self.plugin_failure = plugin_failure
         self.remove_no_effect = remove_no_effect
         self.retain_old_cache = retain_old_cache
+        self.reassociate_on_add = reassociate_on_add
+        self.transition_wrong_ref = transition_wrong_ref
+        self.transition_cache_tamper = transition_cache_tamper
+        self.transition_scope_override = transition_scope_override
+        self.transition_wrong_policy = transition_wrong_policy
+        self.transition_wrong_source = transition_wrong_source
+        self.transition_duplicate = transition_duplicate
+        self.transition_phase_active = False
+        self.detached_installed_version: str | None = None
         self.marketplace_phase = "old"
+        self.marketplace_ref: str | None = self.old_ref
         self.installed_version: str | None = old_version
         self.installed_ref: str | None = self.old_ref
         self.installed_scope: object = "user"
+        self.omit_installed_scope = False
         self.installed_marketplace = preflight.MARKETPLACE_NAME
         self.plugin_source_url = preflight.REPOSITORY_URL
         self.marketplace_source_url = preflight.REPOSITORY_URL
@@ -598,6 +644,15 @@ class OfficialUpgradeCodex:
         }
         self._install_marketplace_snapshot(old_source, self.old_ref)
         self._install_plugin_cache(old_source, old_version, replace_all=True)
+
+    def set_interrupted_transition(
+        self, source: Path, version: str
+    ) -> None:
+        ref = f"v{version}"
+        self.marketplace_phase = "interrupted"
+        self.marketplace_ref = ref
+        self._install_marketplace_snapshot(source, ref)
+        self.installed_ref = ref
 
     @property
     def codex_home(self) -> Path:
@@ -679,7 +734,7 @@ class OfficialUpgradeCodex:
         if args == ["codex", "plugin", "marketplace", "list", "--json"]:
             marketplaces = []
             if self.marketplace_phase != "absent":
-                ref = self.old_ref if self.marketplace_phase == "old" else preflight.TAG
+                ref = self.marketplace_ref
                 source: dict[str, object] = {
                     "sourceType": "git",
                     "source": self.marketplace_source_url,
@@ -700,24 +755,27 @@ class OfficialUpgradeCodex:
             installed: list[dict[str, object]] = list(self.extra_installed)
             available: list[dict[str, object]] = []
             if self.installed_version is not None:
-                installed.append(
-                    {
-                        "pluginId": preflight.PLUGIN_ID,
-                        "name": preflight.PLUGIN_NAME,
-                        "marketplaceName": self.installed_marketplace,
-                        "version": self.installed_version,
-                        "installed": True,
-                        "enabled": True,
-                        "installPolicy": "AVAILABLE",
-                        "authPolicy": "ON_INSTALL",
-                        "scope": self.installed_scope,
-                        "source": {
-                            "source": "git",
-                            "url": self.plugin_source_url,
-                            "ref": self.installed_ref,
-                        },
-                    }
-                )
+                installed_item: dict[str, object] = {
+                    "pluginId": preflight.PLUGIN_ID,
+                    "name": preflight.PLUGIN_NAME,
+                    "marketplaceName": self.installed_marketplace,
+                    "version": self.installed_version,
+                    "installed": True,
+                    "enabled": True,
+                    "installPolicy": "AVAILABLE",
+                    "authPolicy": "MANUAL"
+                    if self.transition_phase_active
+                    and self.transition_wrong_policy
+                    else "ON_INSTALL",
+                    "source": {
+                        "source": "git",
+                        "url": self.plugin_source_url,
+                        "ref": self.installed_ref,
+                    },
+                }
+                if not self.omit_installed_scope:
+                    installed_item["scope"] = self.installed_scope
+                installed.append(installed_item)
             elif self.marketplace_phase == "current" and self.report_marketplace_ref:
                 available.append(
                     {
@@ -745,6 +803,8 @@ class OfficialUpgradeCodex:
                 return preflight.CommandResult(9, stderr="remove failed")
             if not self.remove_no_effect:
                 self.marketplace_phase = "absent"
+                self.marketplace_ref = None
+                self.detached_installed_version = self.installed_version
                 self.installed_version = None
                 self.installed_ref = None
                 # Codex 0.144 keeps enabled=true and the old cache at this point.
@@ -755,7 +815,46 @@ class OfficialUpgradeCodex:
             if self.add_failure:
                 return preflight.CommandResult(10, stderr="add failed")
             self.marketplace_phase = "current"
+            self.marketplace_ref = preflight.TAG
             self._install_marketplace_snapshot(self.current_source, preflight.TAG)
+            if self.reassociate_on_add:
+                self.transition_phase_active = True
+                self.installed_version = self.detached_installed_version
+                self.installed_ref = (
+                    "v0.0.0-rc.1"
+                    if self.transition_wrong_ref
+                    else preflight.TAG
+                )
+                if self.transition_cache_tamper and self.installed_version:
+                    (
+                        self.cache_root
+                        / self.installed_version
+                        / "payload.txt"
+                    ).write_text("tampered transition cache\n", encoding="utf-8")
+                if self.transition_scope_override is not _UNSET:
+                    self.installed_scope = self.transition_scope_override
+                if self.transition_wrong_source:
+                    self.plugin_source_url = (
+                        "https://github.com/unknown/source.git"
+                    )
+                if self.transition_duplicate:
+                    self.extra_installed.append(
+                        {
+                            "pluginId": "acgm-codex@other",
+                            "name": preflight.PLUGIN_NAME,
+                            "version": self.installed_version,
+                            "installed": True,
+                            "enabled": True,
+                            "installPolicy": "AVAILABLE",
+                            "authPolicy": "ON_INSTALL",
+                            "scope": "user",
+                            "source": {
+                                "source": "git",
+                                "url": preflight.REPOSITORY_URL,
+                                "ref": preflight.TAG,
+                            },
+                        }
+                    )
             return preflight.CommandResult(0, "{}")
         if args == bootstrap.PLUGIN_ADD:
             self.mutations.append(args)
@@ -1025,6 +1124,15 @@ class BootstrapTests(unittest.TestCase):
                 ),
             },
         )
+        self.assertEqual(
+            preflight.KNOWN_OFFICIAL_RELEASES["0.2.0-rc.1"],
+            {
+                "revision": "ef036b7308af295f61902ee392b452347ffd1c81",
+                "manifest_sha256": (
+                    "34eac875510513d1a13af9a8da3a9486fbdde35c5949349744174648443c07c3"
+                ),
+            },
+        )
         self.assertLess(
             preflight._rc_version_order("0.1.0-rc.10"),
             preflight._rc_version_order(preflight.VERSION),
@@ -1067,7 +1175,7 @@ class BootstrapTests(unittest.TestCase):
             self.assertEqual(unauthorized["status"], "AUTHORIZATION_REQUIRED")
             self.assertEqual(fake.mutations, [])
 
-    def test_codex_marketplace_metadata_is_required_and_identity_bound(self) -> None:
+    def test_present_codex_marketplace_metadata_is_identity_bound(self) -> None:
         cases: list[tuple[str, object]] = [
             ("source", {"source": "https://github.com/unknown/repo.git"}),
             ("ref", {"ref_name": "main"}),
@@ -1075,7 +1183,6 @@ class BootstrapTests(unittest.TestCase):
             ("sparse", {"sparse_paths": ["skills"]}),
             ("extra_key", {"unexpected": True}),
             ("malformed", "{not-json"),
-            ("missing", "missing"),
             ("extra_untracked", None),
             ("symlink", "symlink"),
         ]
@@ -1097,8 +1204,6 @@ class BootstrapTests(unittest.TestCase):
                         )
                     elif change == "{not-json":
                         metadata.write_text(str(change), encoding="utf-8")
-                    elif change == "missing":
-                        metadata.unlink()
                     elif change == "symlink":
                         metadata.unlink()
                         metadata.symlink_to(source / "VERSION")
@@ -1118,6 +1223,67 @@ class BootstrapTests(unittest.TestCase):
                     self.assertFalse(
                         evaluated["codex"]["official_upgrade"]["eligible"]
                     )
+
+    def test_absent_codex_marketplace_metadata_accepts_exact_clean_checkout(
+        self,
+    ) -> None:
+        temp, source, env = self.fixture()
+        with temp:
+            fake = FakeCodex(source, env)
+            fake.add_marketplace()
+            metadata = fake.marketplace_root / preflight.CODEX_MARKETPLACE_METADATA
+            metadata.unlink()
+
+            evaluated = preflight.evaluate(source, env=env, runner=fake)
+
+            self.assertEqual(evaluated["status"], "READY_FOR_PLUGIN_ADD")
+            evidence = evaluated["codex"]["marketplace_runtime_evidence"]
+            self.assertTrue(evidence["verified"])
+            self.assertTrue(evidence["git_verified"])
+            self.assertTrue(evidence["package_verified"])
+
+    def test_marketplace_metadata_change_after_package_check_blocks(
+        self,
+    ) -> None:
+        temp, source, env = self.fixture()
+        with temp:
+            fake = FakeCodex(source, env)
+            fake.add_marketplace()
+            original_verify = preflight.verify_package
+            changed = False
+
+            def change_after_first_marketplace_check(
+                root: Path, **kwargs: object
+            ) -> dict[str, object]:
+                nonlocal changed
+                result = original_verify(root, **kwargs)
+                if (
+                    root.resolve() == fake.marketplace_root.resolve()
+                    and not changed
+                ):
+                    changed = True
+                    (
+                        root / preflight.CODEX_MARKETPLACE_METADATA
+                    ).write_text("{broken-json", encoding="utf-8")
+                return result
+
+            with mock.patch.object(
+                preflight,
+                "verify_package",
+                side_effect=change_after_first_marketplace_check,
+            ):
+                evaluated = preflight.evaluate(source, env=env, runner=fake)
+
+            self.assertIn(
+                evaluated["status"], {"BLOCKED", "MIGRATION_REQUIRED"}
+            )
+            evidence = evaluated["codex"]["marketplace_runtime_evidence"]
+            self.assertFalse(evidence["verified"])
+            self.assertIn(
+                "snapshot_marketplace_metadata_changed_after_verification",
+                evidence["error_codes"],
+            )
+            self.assertEqual(fake.mutations, [])
 
     def test_installed_cache_accepts_verified_git_checkout_or_manifest_snapshot(self) -> None:
         temp, source, env = self.fixture()
@@ -1213,7 +1379,10 @@ class BootstrapTests(unittest.TestCase):
             )
             self.assertEqual(
                 sorted(path.name for path in fake.cache_root.iterdir()),
-                [preflight.VERSION],
+                sorted(
+                    set(preflight.KNOWN_OFFICIAL_UPGRADE_VERSIONS)
+                    | {preflight.VERSION}
+                ),
             )
             self.assertEqual(
                 result["postflight"]["codex"]["cache_check"]["inventory"][
@@ -1221,6 +1390,261 @@ class BootstrapTests(unittest.TestCase):
                 ],
                 [preflight.VERSION],
             )
+            self.assertEqual(
+                result["postflight"]["codex"]["cache_check"]["inventory"][
+                    "hook_bridges"
+                ],
+                sorted(preflight.KNOWN_OFFICIAL_UPGRADE_VERSIONS),
+            )
+            old_hook = (
+                fake.cache_root
+                / fake.old_version
+                / "scripts"
+                / "acgm_codex.py"
+            )
+            completed = subprocess.run(
+                [sys.executable, str(old_hook), "hook", "stop"],
+                input="{}\n",
+                check=False,
+                text=True,
+                encoding="utf-8",
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=5,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertEqual(json.loads(completed.stdout), {})
+            self.assertEqual(
+                result["old_hook_protection"][-1]["state"],
+                "bridge-created",
+            )
+
+    def test_real_codex_reassociation_continues_only_with_exact_old_cache(
+        self,
+    ) -> None:
+        temp, source, env, fake = self.upgrade_fixture(
+            reassociate_on_add=True
+        )
+        with temp:
+            result = authorized_execute(source, env=env, runner=fake)
+
+            self.assertTrue(result["ok"])
+            self.assertEqual(
+                result["after_marketplace_add"]["status"],
+                "READY_FOR_OFFICIAL_UPGRADE_RECOVERY",
+            )
+            transition = result["after_marketplace_add"]["codex"][
+                "official_upgrade_transition"
+            ]
+            self.assertTrue(transition["recoverable"])
+            self.assertEqual(transition["strategy"], "PLUGIN_ADD_ONLY")
+            self.assertEqual(transition["from_version"], fake.old_version)
+            self.assertEqual(
+                fake.mutations,
+                [
+                    bootstrap.MARKETPLACE_REMOVE,
+                    bootstrap.MARKETPLACE_ADD,
+                    bootstrap.PLUGIN_ADD,
+                ],
+            )
+
+        for kwargs in (
+            {"reassociate_on_add": True, "transition_wrong_ref": True},
+            {"reassociate_on_add": True, "transition_cache_tamper": True},
+            {
+                "reassociate_on_add": True,
+                "transition_scope_override": None,
+            },
+            {"reassociate_on_add": True, "transition_wrong_policy": True},
+            {"reassociate_on_add": True, "transition_wrong_source": True},
+            {"reassociate_on_add": True, "transition_duplicate": True},
+        ):
+            with self.subTest(kwargs=kwargs):
+                temp, source, env, fake = self.upgrade_fixture(**kwargs)
+                with temp:
+                    result = authorized_execute(source, env=env, runner=fake)
+                    self.assertFalse(result["ok"])
+                    self.assertEqual(
+                        result["status"],
+                        "OLD_HOOK_PROTECTION_FAILED_STATE_REQUIRES_RECHECK"
+                        if kwargs.get("transition_cache_tamper")
+                        else "MARKETPLACE_ADDED_BUT_POSTCONDITION_UNVERIFIED",
+                    )
+                    self.assertEqual(
+                        fake.mutations,
+                        [bootstrap.MARKETPLACE_REMOVE, bootstrap.MARKETPLACE_ADD],
+                    )
+
+    def test_interrupted_prior_candidate_requires_new_digest_and_rolls_forward(
+        self,
+    ) -> None:
+        temp = tempfile.TemporaryDirectory()
+        with temp:
+            root = Path(temp.name)
+            source = make_release(root / "current")
+            old_source = make_release(root / "old", version="0.1.0-rc.4")
+            interrupted_version = "0.2.0-rc.1"
+            interrupted = make_release(
+                root / "interrupted", version=interrupted_version
+            )
+            env = os.environ.copy()
+            env["HOME"] = str(root / "home")
+            env["CODEX_HOME"] = str(root / "codex-home")
+            previous_release_identities = dict(
+                preflight.KNOWN_OFFICIAL_RELEASES
+            )
+            preflight.KNOWN_OFFICIAL_RELEASES[interrupted_version] = {
+                "revision": revision_for(
+                    interrupted, f"v{interrupted_version}"
+                ),
+                "manifest_sha256": hashlib.sha256(
+                    (interrupted / preflight.MANIFEST_NAME).read_bytes()
+                ).hexdigest(),
+            }
+            self.addCleanup(
+                lambda: (
+                    preflight.KNOWN_OFFICIAL_RELEASES.clear(),
+                    preflight.KNOWN_OFFICIAL_RELEASES.update(
+                        previous_release_identities
+                    ),
+                )
+            )
+            fake = OfficialUpgradeCodex(
+                source, old_source, env, old_version="0.1.0-rc.4"
+            )
+            fake.set_interrupted_transition(
+                interrupted, interrupted_version
+            )
+
+            evaluated = preflight.evaluate(source, env=env, runner=fake)
+            self.assertEqual(
+                evaluated["status"],
+                "READY_FOR_OFFICIAL_UPGRADE_RECOVERY",
+            )
+            transition = evaluated["codex"][
+                "official_upgrade_transition"
+            ]
+            self.assertTrue(transition["recoverable"])
+            self.assertEqual(transition["strategy"], "RESTART_TO_CURRENT")
+
+            with mock.patch.dict(
+                preflight.KNOWN_OFFICIAL_RELEASES,
+                {
+                    interrupted_version: {
+                        "revision": "0" * 40,
+                        "manifest_sha256": "0" * 64,
+                    }
+                },
+                clear=False,
+            ):
+                pinned_refusal = authorized_execute(
+                    source, env=env, runner=fake
+                )
+            self.assertIn(
+                pinned_refusal["status"],
+                {"BLOCKED", "MIGRATION_REQUIRED"},
+            )
+            self.assertEqual(fake.mutations, [])
+
+            refused = bootstrap.execute(
+                source,
+                dry_run=False,
+                authorized=True,
+                env=env,
+                runner=fake,
+            )
+            self.assertEqual(refused["status"], "INSTALL_PLAN_DIGEST_REQUIRED")
+            self.assertEqual(fake.mutations, [])
+
+            result = authorized_execute(source, env=env, runner=fake)
+            self.assertTrue(result["ok"])
+            self.assertEqual(
+                fake.mutations,
+                [
+                    bootstrap.MARKETPLACE_REMOVE,
+                    bootstrap.MARKETPLACE_ADD,
+                    bootstrap.PLUGIN_ADD,
+                ],
+            )
+            self.assertEqual(
+                result["status"],
+                "INSTALLED_ENABLED_PENDING_HOOK_TRUST",
+            )
+
+    def test_current_target_transition_new_process_resumes_with_plugin_add_only(
+        self,
+    ) -> None:
+        for metadata_absent in (False, True):
+            with self.subTest(metadata_absent=metadata_absent):
+                temp, source, env, fake = self.upgrade_fixture()
+                with temp:
+                    fake.set_interrupted_transition(
+                        source, preflight.VERSION
+                    )
+                    if metadata_absent:
+                        (
+                            fake.marketplace_root
+                            / preflight.CODEX_MARKETPLACE_METADATA
+                        ).unlink()
+
+                    evaluated = preflight.evaluate(
+                        source, env=env, runner=fake
+                    )
+                    self.assertEqual(
+                        evaluated["status"],
+                        "READY_FOR_OFFICIAL_UPGRADE_RECOVERY",
+                    )
+                    self.assertEqual(
+                        evaluated["codex"]["official_upgrade_transition"][
+                            "strategy"
+                        ],
+                        "PLUGIN_ADD_ONLY",
+                    )
+                    self.assertTrue(
+                        evaluated["codex"]["marketplace_runtime_evidence"][
+                            "verified"
+                        ]
+                    )
+
+                    prepared = bootstrap.execute(
+                        source,
+                        dry_run=True,
+                        authorized=False,
+                        env=env,
+                        runner=fake,
+                    )
+                    self.assertEqual(
+                        [action["argv"] for action in prepared["plan"]],
+                        [bootstrap.PLUGIN_ADD],
+                    )
+                    refused = bootstrap.execute(
+                        source,
+                        dry_run=False,
+                        authorized=True,
+                        env=env,
+                        runner=fake,
+                    )
+                    self.assertEqual(
+                        refused["status"], "INSTALL_PLAN_DIGEST_REQUIRED"
+                    )
+                    self.assertEqual(fake.mutations, [])
+
+                    result = bootstrap.execute(
+                        source,
+                        dry_run=False,
+                        authorized=True,
+                        expected_plan_digest=str(
+                            prepared["install_plan_digest"]
+                        ),
+                        env=env,
+                        runner=fake,
+                    )
+                    self.assertTrue(result["ok"])
+                    self.assertEqual(fake.mutations, [bootstrap.PLUGIN_ADD])
+                    self.assertEqual(
+                        result["status"],
+                        "INSTALLED_ENABLED_PENDING_HOOK_TRUST",
+                    )
 
     def test_known_official_upgrade_requires_pinned_release_identity(self) -> None:
         temp, source, env, fake = self.upgrade_fixture()
@@ -1244,6 +1668,101 @@ class BootstrapTests(unittest.TestCase):
                 evidence["error_codes"],
             )
             self.assertFalse(evaluated["codex"]["official_upgrade"]["eligible"])
+
+    def test_cli_omitted_scope_requires_exact_bound_user_profile_config(
+        self,
+    ) -> None:
+        temp, source, env, fake = self.upgrade_fixture()
+        with temp:
+            fake.omit_installed_scope = True
+            accepted = preflight.evaluate(source, env=env, runner=fake)
+            self.assertEqual(accepted["status"], "READY_FOR_OFFICIAL_UPGRADE")
+            self.assertTrue(
+                accepted["codex"]["plugin_profile_config"]["verified"]
+            )
+            self.assertEqual(
+                accepted["codex"]["official_upgrade"]["scope"], "user"
+            )
+
+            config = fake.codex_home / "config.toml"
+            config.write_text(
+                "\n".join(
+                    [
+                        f"[marketplaces.{preflight.MARKETPLACE_NAME}]",
+                        'source_type = "git"',
+                        f'source = "{preflight.REPOSITORY_URL}"',
+                        f'ref = "{fake.old_ref}"',
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            rejected = preflight.evaluate(source, env=env, runner=fake)
+            self.assertEqual(rejected["status"], "MIGRATION_REQUIRED")
+            self.assertFalse(
+                rejected["codex"]["plugin_profile_config"]["verified"]
+            )
+
+    def test_marketplace_and_plugin_evidence_share_one_config_snapshot(
+        self,
+    ) -> None:
+        temp, source, env, fake = self.upgrade_fixture()
+        with temp:
+            fake.omit_installed_scope = True
+            config = fake.codex_home / "config.toml"
+            config.write_text(
+                "\n".join(
+                    [
+                        f"[marketplaces.{preflight.MARKETPLACE_NAME}]",
+                        'source_type = "git"',
+                        f'source = "{preflight.REPOSITORY_URL}"',
+                        f'ref = "{fake.old_ref}"',
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            original_marketplace_parser = (
+                preflight._marketplace_config_evidence
+            )
+
+            def swap_after_marketplace_parse(
+                *args: object, **kwargs: object
+            ) -> dict[str, object]:
+                result = original_marketplace_parser(*args, **kwargs)
+                config.write_text(
+                    "\n".join(
+                        [
+                            f'[plugins."{preflight.PLUGIN_ID}"]',
+                            "enabled = true",
+                            "",
+                        ]
+                    ),
+                    encoding="utf-8",
+                )
+                return result
+
+            with mock.patch.object(
+                preflight,
+                "_marketplace_config_evidence",
+                side_effect=swap_after_marketplace_parse,
+            ):
+                evaluated = preflight.evaluate(source, env=env, runner=fake)
+
+            self.assertIn(
+                evaluated["status"], {"BLOCKED", "MIGRATION_REQUIRED"}
+            )
+            self.assertFalse(
+                evaluated["codex"]["plugin_profile_config"]["verified"]
+            )
+            self.assertFalse(
+                evaluated["codex"]["codex_config_snapshot"]["unchanged"]
+            )
+            self.assertIn(
+                "codex_config_changed_during_verification",
+                evaluated["error_codes"],
+            )
+            self.assertEqual(fake.mutations, [])
 
     def test_official_old_cache_must_match_verified_marketplace_snapshot(self) -> None:
         temp, source, env, fake = self.upgrade_fixture(
@@ -1365,10 +1884,155 @@ class BootstrapTests(unittest.TestCase):
                     self.assertEqual(fake.mutations, expected_mutations)
                     self.assertNotIn("rollback", json.dumps(result).lower())
 
+    def test_failed_plugin_add_recreates_deleted_old_hook_path(self) -> None:
+        temp, source, env, fake = self.upgrade_fixture(
+            old_version="0.2.0-rc.1",
+            plugin_failure=True,
+        )
+        with temp:
+            def runner(
+                argv: list[str] | tuple[str, ...],
+                cwd: Path | None,
+                environment: dict[str, str],
+                timeout: int,
+            ) -> preflight.CommandResult:
+                result = fake(argv, cwd, environment, timeout)
+                if list(argv) == bootstrap.PLUGIN_ADD and result.returncode != 0:
+                    shutil.rmtree(fake.cache_root)
+                return result
+
+            result = authorized_execute(source, env=env, runner=runner)
+            self.assertFalse(result["ok"])
+            self.assertEqual(
+                result["status"], "PLUGIN_ADD_FAILED_MARKETPLACE_MAY_REMAIN"
+            )
+            bridge = fake.cache_root / fake.old_version
+            self.assertTrue(
+                preflight._hook_bridge_verified(
+                    bridge,
+                    from_version=fake.old_version,
+                    target_version=preflight.VERSION,
+                )
+            )
+            rc4_bridge = fake.cache_root / "0.1.0-rc.4"
+            self.assertTrue(
+                preflight._hook_bridge_verified(
+                    rc4_bridge,
+                    from_version="0.1.0-rc.4",
+                    target_version=preflight.VERSION,
+                )
+            )
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(bridge / "scripts" / "acgm_codex.py"),
+                    "hook",
+                    "stop",
+                ],
+                input="{}\n",
+                check=False,
+                text=True,
+                encoding="utf-8",
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=5,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertEqual(json.loads(completed.stdout), {})
+
+    def test_tampered_old_hook_bridge_invalidates_current_cache_inventory(self) -> None:
+        temp, source, env, fake = self.upgrade_fixture(
+            old_version="0.2.0-rc.1"
+        )
+        with temp:
+            installed = authorized_execute(source, env=env, runner=fake)
+            self.assertTrue(installed["ok"])
+            bridge_script = (
+                fake.cache_root
+                / fake.old_version
+                / "scripts"
+                / "acgm_codex.py"
+            )
+            bridge_script.write_text("print('tampered')\n", encoding="utf-8")
+
+            evaluated = preflight.evaluate(source, env=env, runner=fake)
+
+            self.assertEqual(evaluated["status"], "BLOCKED")
+            inventory = evaluated["codex"]["cache_check"]["inventory"]
+            self.assertFalse(inventory["verified"])
+            self.assertIn(
+                "installed_cache_version_entry_unrecognized",
+                inventory["error_codes"],
+            )
+
+    def test_post_plugin_identity_drift_is_partial_not_success(self) -> None:
+        cases = ("policy", "source", "duplicate")
+        for case in cases:
+            with self.subTest(case=case):
+                temp, source, env, fake = self.upgrade_fixture()
+                with temp:
+                    changed = False
+
+                    def runner(
+                        argv: list[str] | tuple[str, ...],
+                        cwd: Path | None,
+                        environment: dict[str, str],
+                        timeout: int,
+                    ) -> preflight.CommandResult:
+                        nonlocal changed
+                        result = fake(argv, cwd, environment, timeout)
+                        if list(argv) == bootstrap.PLUGIN_ADD and not changed:
+                            changed = True
+                            if case == "policy":
+                                fake.transition_phase_active = True
+                                fake.transition_wrong_policy = True
+                            elif case == "source":
+                                fake.plugin_source_url = (
+                                    "https://github.com/unknown/source.git"
+                                )
+                            else:
+                                fake.extra_installed.append(
+                                    {
+                                        "pluginId": "acgm-codex@other",
+                                        "name": preflight.PLUGIN_NAME,
+                                        "version": preflight.VERSION,
+                                        "installed": True,
+                                        "enabled": True,
+                                        "installPolicy": "AVAILABLE",
+                                        "authPolicy": "ON_INSTALL",
+                                        "scope": "user",
+                                        "source": {
+                                            "source": "git",
+                                            "url": preflight.REPOSITORY_URL,
+                                            "ref": preflight.TAG,
+                                        },
+                                    }
+                                )
+                        return result
+
+                    result = authorized_execute(
+                        source, env=env, runner=runner
+                    )
+                    self.assertFalse(result["ok"])
+                    self.assertTrue(result["partial"])
+                    self.assertEqual(
+                        result["status"],
+                        "INSTALL_COMMANDS_FINISHED_BUT_VERIFICATION_FAILED",
+                    )
+                    self.assertEqual(
+                        fake.mutations,
+                        [
+                            bootstrap.MARKETPLACE_REMOVE,
+                            bootstrap.MARKETPLACE_ADD,
+                            bootstrap.PLUGIN_ADD,
+                        ],
+                    )
+
     def test_unknown_newer_foreign_scope_and_duplicate_installs_never_auto_upgrade(self) -> None:
         cases: list[tuple[str, str, dict[str, object]]] = [
             ("unknown_old_version", "0.1.0-rc.10", {}),
-            ("newer_version", "0.2.0-rc.2", {}),
+            ("newer_version", "0.2.0-rc.3", {}),
+            ("null_scope", "0.1.0-rc.4", {"installed_scope": None}),
             ("wrong_scope", "0.1.0-rc.4", {"installed_scope": "project"}),
             (
                 "wrong_marketplace",

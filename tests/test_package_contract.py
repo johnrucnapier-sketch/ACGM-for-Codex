@@ -3,6 +3,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import re
+import shlex
+import subprocess
+import tempfile
 import unittest
 
 
@@ -34,6 +37,10 @@ EXPECTED_HOOKS = {
     "PreCompact": ("manual|auto", "pre-compact", 10),
     "Stop": (None, "stop", 10),
 }
+HOOK_WRAPPER = (
+    'python3 -c "import os,runpy,sys;p=sys.argv[1];sys.argv=sys.argv[1:];'
+    "runpy.run_path(p,run_name='__main__') if os.path.isfile(p) else print('{}')\""
+)
 
 
 def read_json(path: Path) -> dict:
@@ -205,10 +212,65 @@ class PackageContractTests(unittest.TestCase):
                 self.assertEqual(handler["type"], "command")
                 self.assertEqual(
                     handler["command"],
-                    f'python3 "${{PLUGIN_ROOT}}/scripts/acgm_codex.py" hook {mode}',
+                    f'{HOOK_WRAPPER} "${{PLUGIN_ROOT}}/scripts/acgm_codex.py" hook {mode}',
                 )
                 self.assertEqual(handler["timeout"], timeout)
                 self.assertGreater(len(handler["statusMessage"].strip()), 10)
+
+    def test_hook_wrapper_fails_open_when_versioned_runtime_is_missing(self) -> None:
+        hooks = read_json(HOOK_PATH)["hooks"]
+        with tempfile.TemporaryDirectory(prefix="acgm missing plugin ") as raw:
+            plugin_root = Path(raw)
+            for event, (_, _, _) in EXPECTED_HOOKS.items():
+                with self.subTest(event=event):
+                    command = hooks[event][0]["hooks"][0]["command"]
+                    argv = shlex.split(
+                        command.replace("${PLUGIN_ROOT}", str(plugin_root))
+                    )
+                    completed = subprocess.run(
+                        argv,
+                        input="{}\n",
+                        check=False,
+                        text=True,
+                        encoding="utf-8",
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        timeout=5,
+                    )
+                    self.assertEqual(completed.returncode, 0, completed.stderr)
+                    self.assertEqual(json.loads(completed.stdout), {})
+
+    def test_hook_wrapper_preserves_runtime_arguments_when_present(self) -> None:
+        hooks = read_json(HOOK_PATH)["hooks"]
+        with tempfile.TemporaryDirectory(prefix="acgm present plugin ") as raw:
+            plugin_root = Path(raw)
+            script = plugin_root / "scripts" / "acgm_codex.py"
+            script.parent.mkdir()
+            script.write_text(
+                "import json, sys\nprint(json.dumps(sys.argv))\n",
+                encoding="utf-8",
+            )
+            for event, (_, mode, _) in EXPECTED_HOOKS.items():
+                with self.subTest(event=event):
+                    command = hooks[event][0]["hooks"][0]["command"]
+                    argv = shlex.split(
+                        command.replace("${PLUGIN_ROOT}", str(plugin_root))
+                    )
+                    completed = subprocess.run(
+                        argv,
+                        input="{}\n",
+                        check=False,
+                        text=True,
+                        encoding="utf-8",
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        timeout=5,
+                    )
+                    self.assertEqual(completed.returncode, 0, completed.stderr)
+                    self.assertEqual(
+                        json.loads(completed.stdout),
+                        [str(script), "hook", mode],
+                    )
 
     def test_hooks_use_only_codex_contract(self) -> None:
         raw = HOOK_PATH.read_text(encoding="utf-8")

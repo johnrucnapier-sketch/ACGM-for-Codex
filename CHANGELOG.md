@@ -1,5 +1,49 @@
 # Changelog
 
+## 0.2.0-rc.2 — 2026-07-19 candidate; installed-platform upgrade and Hook lifecycle repair
+
+- Prevent version upgrades from stranding Hooks already loaded by an open Codex
+  task. Bootstrap keeps the verified installed Hook path executable during every
+  remove/add/add step and publishes exact two-file fail-open bridges for every
+  known official pre-guard version, including older tasks that were already
+  stale before this upgrade. The current cache inventory accepts
+  only the full target release plus byte-exact bridges from known official old
+  versions; retained full releases, extra files, symlinks, and tampered bridges
+  remain fail-closed.
+- Wrap every newly installed Hook definition with an inline missing-runtime
+  guard. If a later plugin upgrade removes its versioned script before an old
+  task exits, the Hook returns an empty successful result instead of turning a
+  missing `Stop` executable into repeated model/Hook cycles. When the runtime is
+  present, the wrapper preserves the original script arguments and behavior.
+- Accept the clean marketplace checkout shape produced by Codex CLI `0.144.5`,
+  which has no `.codex-marketplace-install.json`. Absence is allowed only when
+  the unique config/CLI identity, clean HEAD/tag/origin, exact manifest and
+  filesystem inventory, release contract, and pinned revision/hash all verify.
+  If the optional platform metadata exists, its full identity remains strict;
+  malformed, mismatched, extra, changing, symlinked, or dirty state fails closed.
+- Parse marketplace and plugin-enabled evidence from one stable non-symlink
+  `CODEX_HOME/config.toml` snapshot and recheck its path identity and hash at the
+  end. Codex 0.144.5's omitted scope is accepted only through that exact bound
+  user-profile table; explicit null/other scope or split-snapshot evidence is
+  rejected. Revalidate marketplace Git, filesystem package, optional metadata,
+  and official pins again at the terminal evidence boundary.
+- Model Codex's real official-upgrade re-association: after marketplace
+  replacement, the installed entry can still report the old version/cache while
+  its source ref already points at the new marketplace. The active one-consent
+  transaction continues to plugin add only when the old pinned cache identity,
+  source, policy, scope, uniqueness, target marketplace, and original authorized
+  upgrade origin all match exactly.
+- Add digest-bound recovery for an interrupted pinned official transition. If
+  the observed marketplace is already the current target, a new plan can resume
+  plugin add; if it is a pinned earlier target such as RC1, a new plan rolls it
+  forward through marketplace remove, exact RC2 add, and plugin add. Unknown or
+  changed transitions remain blocked and private `PLUGIN_DATA`, Event Ledger,
+  and HMAC material are never adopted, reset, or moved.
+- Add regression fixtures for metadata-present/metadata-absent marketplace
+  shapes, real re-association, transition tampering, new-digest recovery, and
+  the fixed final cache/version postcondition. RC1 remains an immutable tagged
+  candidate and is not retroactively moved.
+
 ## 0.2.0-rc.1 — 2026-07-17 tagged test candidate; pending installed-platform validation
 
 - Add a one-consent quickstart that combines exact tag/manifest/plugin

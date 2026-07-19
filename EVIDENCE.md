@@ -4,13 +4,16 @@ This file prevents implementation activity from silently becoming a product
 claim. Promotion requires evidence at the level stated below.
 
 **Current candidate status:** RC4's tag-pinned marketplace lifecycle and the
-real 2026-07-17 Hook observation remain historical evidence. The tagged
-`0.2.0-rc.1` candidate adds one-consent quickstart, conservative
-`standard-v1` provisioning, ambiguous-root protection, read-only standalone
-diagnostics, and first-observed-Hook heartbeat behavior. Those new contracts
-have automated fixture coverage, but no fresh installed-candidate E2E is
-recorded here. In particular, no current evidence yet combines the candidate
-package, Codex's real `/hooks` trust boundary, and a subsequent real tool event.
+real 2026-07-17 Hook observation remain historical evidence. Exact-tag RC1 E2E
+reached the real marketplace replacement step and then stopped safely when
+Codex 0.144.5 exposed two platform shapes absent from the fixtures: no
+`.codex-marketplace-install.json`, plus an old installed version/cache
+re-associated with the new marketplace ref. The `0.2.0-rc.2` candidate repairs
+those findings with strict optional-metadata and official-transition evidence,
+while retaining one-consent `standard-v1` provisioning, ambiguous-root
+protection, read-only standalone diagnostics, and first-observed-Hook heartbeat
+behavior. RC2 has automated fixture coverage, but exact-tag installed E2E and
+the subsequent real `/hooks` trust/tool-event boundary are still pending.
 Broader automatic-installation and automatic-Hook claims therefore remain
 unpromoted.
 
@@ -29,6 +32,36 @@ unpromoted.
 | The Event Ledger is source-minimized | Automated contract | Search the real plugin data directory after E2E |
 | Native Windows runtime is supported | Blocked | Replace POSIX `fcntl` and pass native Windows install/runtime E2E |
 | ACGM reduces long-horizon drift in general | Predictive | Repeated external project trials with reviewed controls |
+
+## 0.2.0-rc.2 candidate evidence
+
+- An isolated disposable Codex CLI `0.144.5` profile verified that exact
+  marketplace add and plugin add produce clean tag-pinned Git checkouts without
+  `.codex-marketplace-install.json`; final plugin identity, enabled state,
+  version, source ref, and cache bytes were otherwise exact. No real user
+  profile or private ledger was read or modified by that probe.
+- The real RC4-to-RC1 exact-tag run verified source, manifest, old official
+  marketplace/cache, and the digest-bound remove/add/add plan. After successful
+  marketplace replacement it stopped before plugin add and before project
+  writes when RC1 did not recognize Codex's re-associated old-version entry.
+  The private data directory, HMAC key, Event Ledger, and locator retained their
+  inode and permission identities; ledger growth was append-only Hook activity.
+- RC2 fixtures accept metadata absence only with the complete exact Git/config/
+  CLI/package/release chain, keep invalid present metadata fail-closed, model
+  the observed re-association, bind it to the originally authorized old cache,
+  and reject changed ref or cache bytes before plugin add.
+- Cross-process recovery fixtures require a new plan digest. A pinned prior
+  target is rolled forward through remove/add/add; an exact current target may
+  resume plugin add. Unknown, duplicate, foreign, wrong-scope/policy/source,
+  unpinned, or tampered transition states remain non-executable.
+- Hook command fixtures execute every released definition against a missing
+  versioned runtime and verify a zero exit with an empty result. Upgrade
+  fixtures execute old-path Stop Hooks after RC2 replacement, verify the exact
+  complete known-version bridge inventory (including RC4 when RC1 is currently
+  installed), recreate the bridges after an injected plugin-add failure deletes
+  the old cache, and reject a modified bridge.
+- RC2 exact-tag installed-platform E2E, final full-RC2-plus-verified-bridge cache verification,
+  and the next-task Hook trust/heartbeat proof remain promotion gates.
 
 ## 0.2.0-rc.1 candidate evidence
 
@@ -60,7 +93,8 @@ unpromoted.
   the old marketplace tag snapshot and installed cache to match, verify the
   real Codex marketplace-metadata and full-Git-cache shapes, pin each known old
   release's commit/manifest identity, enforce the fixed remove/add/add sequence,
-  reject old-and-new cache coexistence, and keep
+  reject full old-and-new cache coexistence while accepting only the exact
+  lifecycle bridge shape, and keep
   unknown, personal, duplicate, foreign-scope/source/ref, tampered, and newer
   installs fail-closed. Injected command/postcondition failures are reported as
   partial state without a rollback claim.

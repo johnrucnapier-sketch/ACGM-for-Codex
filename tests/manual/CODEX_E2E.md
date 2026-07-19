@@ -5,7 +5,7 @@ repositories. Capture versions and results, but never paste secrets into a promp
 or ledger fixture.
 
 **Candidate status:** this checklist defines the remaining acceptance work for
-`0.2.0-rc.1`. It has not yet been recorded as passed against an installed
+`0.2.0-rc.2`. It has not yet been recorded as passed against an installed
 candidate in a completely new Codex task.
 
 ## 1. Package and one-consent quickstart
@@ -40,8 +40,8 @@ plan. The dry run is machine verification, not a second user approval.
 Expected:
 
 - the source is the exact candidate tag, manifest, and package inventory;
-- `acgm-codex@acgm-codex` version `0.2.0-rc.1` is installed and enabled from
-  the exact repository and `v0.2.0-rc.1`;
+- `acgm-codex@acgm-codex` version `0.2.0-rc.2` is installed and enabled from
+  the exact repository and `v0.2.0-rc.2`;
 - cached package bytes match the source manifest;
 - the target has the required governance assets, is activated, and doctor sees
   it as `GOVERNED`;
@@ -67,17 +67,28 @@ plugin-data metadata. Then run the RC1 combined dry-run/apply flow above.
 
 Expected:
 
-- the plan explicitly contains marketplace remove, exact `v0.2.0-rc.1`
+- the plan explicitly contains marketplace remove, exact `v0.2.0-rc.2`
   marketplace add, and plugin add;
 - apply refuses a changed starting version/ref, marketplace snapshot, installed
   cache, plan digest, or any duplicate/foreign/unknown/newer state before its
   first mutation;
-- the final installation has only the `0.2.0-rc.1` cache directory and passes
-  exact byte verification;
+- the final installation has the full `0.2.0-rc.2` cache and only the exact
+  fail-open bridge at the verified old version path; both pass inventory and
+  byte verification;
+- before closing the old task, trigger its old Stop Hook and confirm it exits
+  once with an empty result rather than producing another model/Hook turn;
 - private `PLUGIN_DATA`, Event Ledger, and HMAC key are not copied, reset, or
   adopted by the installer;
 - an injected failure is reported as partial/recheck state, never as automatic
   rollback.
+
+Also exercise the exact RC1 interruption observed on Codex 0.144.5: official
+RC4 cache remains installed while the marketplace and installed source ref have
+already moved to `v0.2.0-rc.1`. RC2 planning must classify only the completely
+verified form as `READY_FOR_OFFICIAL_UPGRADE_RECOVERY`, require a new digest,
+and roll it forward through marketplace remove, exact RC2 add, and plugin add.
+Any changed old cache, prior marketplace revision/manifest, scope, policy,
+source, ref, duplicate, or private-data identity must stop before plugin add.
 
 ## 2. Exact-root and multi-repository safety
 
@@ -126,7 +137,7 @@ After trust, run one harmless real tool call such as a Git status inspection,
 then run:
 
 ```bash
-ACGM="${CODEX_HOME:-$HOME/.codex}/plugins/cache/acgm-codex/acgm-codex/0.2.0-rc.1/bin/acgm-codex"
+ACGM="${CODEX_HOME:-$HOME/.codex}/plugins/cache/acgm-codex/acgm-codex/0.2.0-rc.2/bin/acgm-codex"
 "$ACGM" quickstart status /absolute/path/to/disposable-project --json
 "$ACGM" doctor /absolute/path/to/disposable-project --strict
 ```
@@ -240,6 +251,11 @@ postcondition.
 Expected: the first `Stop` asks Codex to continue and verify. If the obligation
 is still open when the continued turn stops, ACGM records it as unresolved and
 does not create an infinite loop.
+
+Also delete the versioned runtime only in a disposable profile after its Hook
+command has been captured. Every released Hook command must exit zero with an
+empty result; `Stop` must not trigger a model/Hook cycle. Restore by reinstalling
+the exact release, not by editing the real user cache.
 
 ## 8. Compaction and subagents
 

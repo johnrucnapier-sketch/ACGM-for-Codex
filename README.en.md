@@ -9,7 +9,7 @@ source-minimized local Event Ledger.
 
 [中文](README.md)
 
-> **Status: `0.2.0-rc.1`.** This is a public-preview release candidate, not a stable
+> **Status: `0.2.0-rc.2`.** This is a public-preview release candidate, not a stable
 > release. Automated tests can validate the package and runtime. Automatic Hook
 > behavior is not considered verified until Hook trust and real tool-call E2E pass
 > in a completely new task on the installed Codex version.
@@ -80,7 +80,7 @@ The Agent clones the exact tag and runs:
 
 ```bash
 ACGM_SOURCE="$(mktemp -d)/ACGM-for-Codex"
-git clone --branch v0.2.0-rc.1 --depth 1 \
+git clone --branch v0.2.0-rc.2 --depth 1 \
   https://github.com/johnrucnapier-sketch/ACGM-for-Codex.git "$ACGM_SOURCE"
 python3 "$ACGM_SOURCE/scripts/quickstart.py" \
   --project /absolute/path/to/the/exact/project --dry-run --json
@@ -106,15 +106,28 @@ and identity, existing managed-file hashes, and every proposed byte. Any changed
 fact invalidates the grant before apply.
 
 For a fresh install, bootstrap invokes `codex plugin marketplace add
-johnrucnapier-sketch/ACGM-for-Codex --ref v0.2.0-rc.1 --json` and then `codex
+johnrucnapier-sketch/ACGM-for-Codex --ref v0.2.0-rc.2 --json` and then `codex
 plugin add acgm-codex@acgm-codex --json`. It independently verifies the exact
 marketplace source/ref, plugin name/version/enabled state, and cached package
 bytes. The sole automatic plugin-upgrade exception is one enabled, user-scope
-official `0.1.0-rc.2`, `0.1.0-rc.3`, or `0.1.0-rc.4` whose source, ref, policy,
+official `0.1.0-rc.2`, `0.1.0-rc.3`, `0.1.0-rc.4`, or `0.2.0-rc.1` whose source, ref, policy,
 marketplace snapshot, package bytes, and sole cache entry all verify. That
 digest explicitly binds marketplace remove, exact-ref marketplace add, and
 plugin add. A failed external mutation is reported as partial/recheck state; it
 is not described as rolled back.
+An open task continues to invoke the old versioned Hook path it loaded at task
+start. RC2 protects that path during each upgrade step and publishes verified
+fail-open bridges for every known official pre-guard version, including tasks
+already stale before this upgrade. The stale task
+therefore cannot turn a missing Stop Hook into a model loop, while a restarted
+task loads the full current ACGM runtime. New Hook commands also carry their
+missing-runtime guard inline so a future upgrade cannot recreate this lockout.
+This is not Lite mode and does not weaken rules while the full runtime exists.
+RC2 also verifies the temporary “old installed cache + new source ref”
+re-association that Codex can expose after marketplace replacement. It proceeds
+only when the old cache, target checkout, scope, policy, and pinned official
+release identities all match. The equivalent RC1-interrupted state receives a
+new RC2 digest and is rolled forward automatically without hand-editing config.
 If installation succeeds but the project root changes before project apply, the
 combined result reports `PROJECT_RECHECK_REQUIRED` with `partial=true` instead
 of escaping as a traceback.
@@ -142,7 +155,7 @@ not bypass Codex or OS security.
 
 Legacy `acgm-codex@personal`, duplicates, another scope/source/ref, unknown
 versions, and newer versions are fail-closed; the exact verified official
-RC2/RC3/RC4 path above is the only plugin-upgrade exception. Bootstrap never
+four exact official candidate paths above are the only plugin-upgrade exceptions. Bootstrap never
 adopts, resets, or moves private `PLUGIN_DATA` / Event Ledger content. See
 [INSTALL.md](INSTALL.md).
 Unknown policy, symlinks, non-regular managed paths, substantive active drift,
@@ -179,7 +192,7 @@ acgm-codex quickstart status /absolute/path/to/project --json
 those exact bytes; the user does not have to type a Constitution. Existing
 substantive policy is preserved. Version-only adapter drift with an otherwise
 matching baseline is upgraded in the same authorization only from the explicit
-compatible RC2/RC3/RC4 project-adapter set; an unknown or newer state is never
+compatible RC2/RC3/RC4/0.2-RC1 project-adapter set; an unknown or newer state is never
 automatically downgraded. A healthy manually activated project may adopt its
 missing standard decision/snapshot while preserving the activation id. Unknown
 receipts, concurrent Git/index changes, unknown placeholders, symlinks,

@@ -36,20 +36,36 @@ Public bootstrap verifies a clean exact release tag and `PACKAGE_MANIFEST.json`,
 then uses the official Git marketplace CLI. It independently verifies the
 resulting marketplace source/ref, plugin identity/version/enabled state, and
 cached package bytes. A fresh install is add/add. The only automatic plugin
-replacement is a digest-bound official RC2/RC3/RC4 upgrade after both the old
+replacement is a digest-bound official RC2/RC3/RC4/0.2-RC1 upgrade after both the old
 marketplace tag snapshot and sole installed cache match the verified old release;
 its fixed sequence is marketplace remove, exact-ref marketplace add, and plugin
-add. Every step is re-inspected, and partial failure is reported without a
-rollback claim. The old personal copy remains development-only, private
+add. Every step is re-inspected. Because an already-open Codex task retains the
+absolute Hook command from the version that started it, bootstrap keeps the
+verified installed path executable throughout the transition and publishes a
+byte-exact, fail-open two-file bridge for every known official pre-guard version,
+including tasks already stale before the upgrade. Current-state
+verification accepts one full target cache plus verified bridges from known old
+official versions; a retained full old cache or altered bridge is still an
+error. Partial failure is reported without a rollback claim. The old personal copy remains development-only, private
 `PLUGIN_DATA` is never adopted, and none of these checks proves that Hooks were
 trusted or ran.
 
-Codex currently adds one platform-owned
-`.codex-marketplace-install.json` file beside the clean marketplace checkout and
-may retain a full `.git` directory in the installed plugin cache. These are not
-release payload bytes. The marketplace exception is accepted only when its
-strict JSON identity matches the expected repository, ref, empty sparse-path
-set, and exact tag revision, and it is the checkout's sole untracked entry. A
+Codex CLI 0.144.5 also omits the `scope` field for a user-installed plugin.
+Absence is not treated as user scope by default: it is accepted only when the
+exact enabled plugin table exists in the already digest-bound effective
+`CODEX_HOME/config.toml`. An explicit null, project/other scope, missing or
+duplicate profile table, or non-exact table shape remains fail-closed.
+
+Some Codex builds add one platform-owned
+`.codex-marketplace-install.json` file beside the clean marketplace checkout;
+Codex 0.144.5 does not. Either shape may retain a full `.git` directory. These
+are not release payload bytes. Absence of the metadata is accepted only with an
+otherwise empty Git status and the complete exact config, CLI identity,
+HEAD/tag/origin, manifest, filesystem inventory, release-contract, and pinned
+revision/hash chain. If the metadata exists, its strict JSON identity must match
+the expected repository, ref, empty sparse-path set, and exact tag revision,
+and it must be the checkout's sole untracked entry. An invalid present file is
+always fail-closed. A
 cache `.git` directory is accepted only as a real non-symlink directory whose
 clean HEAD, exact tag, and origin all verify; a cache without `.git` remains
 valid only through exact package bytes and equality with the verified
@@ -71,7 +87,7 @@ exception: when the recorded
 baseline still matches, the approved plan may update the adapter version and
 baseline without replacing project-owned policy or rotating its activation ID.
 That project-adapter exception accepts only the explicit compatible
-RC2/RC3/RC4 set and a strictly older semantic version; unknown and future states
+RC2/RC3/RC4/0.2-RC1 set and a strictly older semantic version; unknown and future states
 are not downgraded. A healthy current-version manually activated project can
 adopt only its missing preset decision/snapshot, preserve its activation ID, and
 rebaseline to the exact authorized postimage.
@@ -167,6 +183,14 @@ Hooks handle only mechanically testable subsets:
 | `PostToolUse` | Open a mechanical verification obligation after a consumed high-risk action; never infer check success from Bash response text |
 | `PreCompact` | Persist only a source-minimized heartbeat before compaction |
 | `Stop` | Continue once when a verification obligation remains open |
+
+Each released command contains its missing-runtime guard inline rather than in
+the versioned cache it protects. If that cache path disappears during a later
+upgrade, the old task returns an empty successful Hook result and stops applying
+ACGM until the task is restarted; it cannot turn a missing executable into a
+repeated Stop/model cycle. With the script present, the wrapper delegates to the
+complete runtime unchanged. This is lifecycle fail-open behavior, not a Lite
+governance mode.
 
 `UserPromptSubmit` is intentionally absent: the RC does not need to process raw
 prompts. Transcript parsing is also absent because Codex documents transcript
@@ -293,7 +317,7 @@ written first and sanitized later; they are discarded before persistence.
 Automated fixtures exercise the one-consent plan/apply contract, conservative
 asset adoption, ambiguous-root fail-closed behavior, and first-observed-Hook
 heartbeat. They do not prove installed-platform behavior. The installed-plugin
-E2E for the `0.2.0-rc.1` candidate—including the platform-owned `/hooks` review
+E2E for the `0.2.0-rc.2` candidate—including the platform-owned `/hooks` review
 flow and real Codex tool events in a completely new task—has not yet been
 recorded as passed. No new automatic-Hook claim is promoted to verified platform
 behavior until that checklist is completed.
