@@ -37,7 +37,8 @@ Public bootstrap verifies a clean exact release tag and `PACKAGE_MANIFEST.json`,
 then uses the official Git marketplace CLI. It independently verifies the
 resulting marketplace source/ref, plugin identity/version/enabled state, and
 cached package bytes. A fresh install is add/add. The only automatic plugin
-replacement is a digest-bound official RC2/RC3/RC4/0.2-RC1/0.2-RC2 upgrade after both the old
+replacement is a digest-bound official `0.1.0-rc.2` through `0.1.0-rc.4` or
+`0.2.0-rc.1` through `0.2.0-rc.3` upgrade after both the old
 marketplace tag snapshot and sole installed cache match the verified old release;
 its fixed sequence is marketplace remove, exact-ref marketplace add, and plugin
 add. Every step is re-inspected. Because an already-open Codex task retains the
@@ -47,7 +48,7 @@ byte-exact, fail-open two-file bridge for every known official pre-guard version
 including tasks already stale before the upgrade. Current-state
 verification accepts one full target cache plus verified bridges from known old
 official versions; a retained full old cache or altered bridge is still an
-error. RC3 additionally publishes the manifest-bound runtime to stable
+error. RC3 and later additionally publish the manifest-bound runtime to stable
 `PLUGIN_DATA/runtime/acgm_codex.py`. Its install authorization digest binds the
 hashed logical target, expected hash and size, observed preimage/state/hash, and
 whether publication is needed. Only missing, exact, permission-drifted, or
@@ -94,7 +95,8 @@ exception: when the recorded
 baseline still matches, the approved plan may update the adapter version and
 baseline without replacing project-owned policy or rotating its activation ID.
 That project-adapter exception accepts only the explicit compatible
-RC2/RC3/RC4/0.2-RC1/0.2-RC2 set and a strictly older semantic version; unknown and future states
+`0.1.0-rc.2` through `0.1.0-rc.4` or `0.2.0-rc.1` through
+`0.2.0-rc.3` set and a strictly older semantic version; unknown and future states
 are not downgraded. A healthy current-version manually activated project can
 adopt only its missing preset decision/snapshot, preserve its activation ID, and
 rebaseline to the exact authorized postimage.
@@ -191,7 +193,7 @@ Hooks handle only mechanically testable subsets:
 | `PreCompact` | Persist only a source-minimized heartbeat before compaction |
 | `Stop` | Continue once when a verification obligation remains open |
 
-Each RC3 Hook command addresses the stable `PLUGIN_DATA` runtime instead of a
+Each RC3-and-later Hook command addresses the stable `PLUGIN_DATA` runtime instead of a
 versioned cache path. Codex's platform trust hash binds the fixed Hook command;
 it does not independently hash future bytes at that path. The command therefore
 embeds this release's exact runtime SHA-256 and size, opens the target with
@@ -330,7 +332,7 @@ written first and sanitized later; they are discarded before persistence.
 Automated fixtures exercise the one-consent plan/apply contract, conservative
 asset adoption, ambiguous-root fail-closed behavior, and first-observed-Hook
 heartbeat. They do not prove installed-platform behavior. The installed-plugin
-E2E for the `0.2.0-rc.3` candidate—including the platform-owned `/hooks` review
+E2E for the `0.2.0-rc.4` candidate—including the platform-owned `/hooks` review
 flow and real Codex tool events in a completely new task—has not yet been
 recorded as passed. No new automatic-Hook claim is promoted to verified platform
 behavior until that checklist is completed.

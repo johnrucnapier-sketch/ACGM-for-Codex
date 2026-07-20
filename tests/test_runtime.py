@@ -1819,15 +1819,45 @@ class RuntimeTests(unittest.TestCase):
         self.init_activate()
         for command in (
             "printf bad > CONSTITUTION.md",
+            "cat replacement >./CONSTITUTION.md",
+            ": <> CONSTITUTION.md",
             "git restore CONSTITUTION.md",
             "git checkout -- CONSTITUTION.md",
             "dd if=/tmp/replacement of=CONSTITUTION.md",
             "acgm-codex export-case abc -o CONSTITUTION.md",
+            "cp README.md CONSTITUTION.md",
+            "mv CONSTITUTION.md backup.md",
+            "cat replacement | tee CONSTITUTION.md",
+            "sed -i.bak 's/old/new/' CONSTITUTION.md",
+            "perl -pi -e 's/old/new/' CONSTITUTION.md",
+            "sh -c 'printf bad > CONSTITUTION.md'",
+            "bash -lc 'cp README.md CONSTITUTION.md'",
+            "env cp README.md CONSTITUTION.md",
+            "command cp README.md CONSTITUTION.md",
+            "sudo -- cp README.md CONSTITUTION.md",
         ):
             with self.subTest(command=command):
                 result = self.pre_bash(command)
                 self.assertEqual(result["hookSpecificOutput"]["permissionDecision"], "deny")
-        self.assertEqual(self.pre_bash("sed -n '1,20p' CONSTITUTION.md"), {})
+        for command in (
+            "sed -n '1,20p' CONSTITUTION.md",
+            "nl -ba CONSTITUTION.md | sed -n '1,20p'",
+            "sed -n '1,20p' /tmp/session-grounding/SKILL.md && "
+            "sed -n '1,20p' CONSTITUTION.md",
+            "cp README.md /tmp/readme-copy && sed -n '1,20p' CONSTITUTION.md",
+            "cp CONSTITUTION.md /tmp/constitution-backup.md",
+            "cat CONSTITUTION.md | tee /tmp/constitution-backup.md",
+            "dd if=CONSTITUTION.md of=/tmp/constitution-backup.md",
+            "sh -c 'sed -n 1,20p CONSTITUTION.md'",
+            "env sed -n '1,20p' CONSTITUTION.md",
+            "command sed -n '1,20p' CONSTITUTION.md",
+            "perl -Ilib -ne 'print' CONSTITUTION.md",
+            "sed -i -e CONSTITUTION.md README.md",
+            "perl -pi -e CONSTITUTION.md README.md",
+            "perl -pi CONSTITUTION.md README.md",
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(self.pre_bash(command), {})
 
     def test_codex_string_tool_response_never_becomes_gate_evidence(self) -> None:
         self.init_activate()

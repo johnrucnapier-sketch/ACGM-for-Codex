@@ -3,23 +3,17 @@
 This file prevents implementation activity from silently becoming a product
 claim. Promotion requires evidence at the level stated below.
 
-**Current candidate status:** RC4's tag-pinned marketplace lifecycle and the
-real 2026-07-17 Hook observation remain historical evidence. Exact-tag RC1 E2E
-reached the real marketplace replacement step and then stopped safely when
-Codex 0.144.5 exposed two platform shapes absent from the fixtures: no
-`.codex-marketplace-install.json`, plus an old installed version/cache
-re-associated with the new marketplace ref. RC2 repaired those release-tool
-findings, but real desktop trials then exposed a second lifecycle defect: an
-app-server retained RC1 Hook commands after RC2 installation, Codex pruned the
-referenced version cache, and repeated missing-script Stop failures stranded
-multiple tasks. The `0.2.0-rc.3` candidate moves the runtime to stable
-`PLUGIN_DATA`, binds its exact size/hash into each fixed Hook command and the
-install authorization/postflight, and requires a full desktop restart before
-new-runtime acceptance. RC3 has automated fixture coverage, but exact-tag
-installed E2E and the subsequent real `/hooks` trust/tool-event boundary are
-still pending.
-Broader automatic-installation and automatic-Hook claims therefore remain
-unpromoted.
+**Current candidate status:** RC3's exact-tag local upgrade, full desktop
+restart, user trust review, genuine new-task SessionStart heartbeat, and strict
+doctor pass are now observed on macOS with Codex CLI 0.145.0-alpha.18. That
+trial also exposed two read-only Constitution false positives: RC3 combined a
+global target match with an unrelated greedy writer match elsewhere in a
+compound command. The `0.2.0-rc.4` candidate binds a supported writer and its
+literal Constitution target within the same tokenized shell segment and adds
+direction-aware read/write fixtures. RC4 has automated coverage, but its own
+exact-tag install, restart, platform trust review, and genuine new-task
+acceptance remain pending. Broader automatic-installation and automatic-Hook
+claims therefore remain unpromoted.
 
 | Claim | Current maturity | Required next evidence |
 |---|---|---|
@@ -29,13 +23,34 @@ unpromoted.
 | Ambiguous multi-repository containers are not initialized or given a project heartbeat | Automated fixture | Observe fail-closed behavior in a real Codex task opened at a disposable multi-repo parent |
 | Project state does not equate installation with governance | Automated contract | Runtime lifecycle tests and disposable-repo E2E |
 | The first trusted ACGM Hook can establish the current activation heartbeat without a second artificial task | Designed / automated fixture | Review the installed candidate definitions, use bulk trust only for an ACGM-only pending set, run one real tool event, and obtain strict completion |
-| Session startup injects current grounding | Historical RC4 Hook heartbeat; strict CLI compatibility finding remains | Install the candidate read-only diagnostic fix, then obtain strict pass plus visible context in a fresh task |
-| Constitution writes are intercepted | Designed / automated fixture | Real `apply_patch` denial in a disposable governed repo |
+| Session startup injects current grounding | RC3 installed-platform heartbeat and strict pass on one macOS/Codex build | Repeat against RC4 and additional supported environments |
+| Constitution writes are intercepted | RC4 automated target-bound fixture; RC3 real read-only false positives | Obtain a real write denial and read-only non-denial in a disposable RC4-governed repo |
 | Narrow destructive operations require a target-bound fixed current-state gate | Designed / automated fixture | Real Bash path: deny, fixed check, atomic arm consumption, retry, verify |
 | Post-action obligations prevent a quiet first stop | Designed / automated fixture | Real `PostToolUse` and bounded `Stop` continuation |
 | The Event Ledger is source-minimized | Automated contract | Search the real plugin data directory after E2E |
 | Native Windows runtime is supported | Blocked | Replace POSIX `fcntl` and pass native Windows install/runtime E2E |
 | ACGM reduces long-horizon drift in general | Predictive | Repeated external project trials with reviewed controls |
+
+## 0.2.0-rc.4 candidate evidence
+
+- A fully restarted, user-trusted RC3 installation recorded a genuine
+  SessionStart heartbeat and passed strict doctor with a healthy ledger. This
+  proves the stable runtime lifecycle for that local build, not general product
+  effectiveness.
+- The same live audit produced a read-only denial, and an independent compound
+  read command reproduced it without changing the protected file. RC3's Bash
+  matcher first searched the entire command for `CONSTITUTION.md`, then applied
+  a second entire-command writer regex. Its greedy `sed` in-place expression
+  crossed shell segments and matched letters inside a hyphenated path.
+- RC4 tokenizes control-separated shell segments and requires the protected
+  operand to be a target of a supported writer in that same segment. Fixtures
+  distinguish copy/stream/read directions from overwrite/move/in-place/write
+  directions and cover common shell, environment, command, and sudo wrappers.
+- The RC3 predecessor is pinned by immutable revision, package-manifest digest,
+  and stable-runtime digest. Upgrade planning still binds the exact source,
+  installed cache, stable-runtime preimage, plan digest, and postflight bytes;
+  unknown or changed predecessors remain non-executable.
+- RC4 exact-tag release checks and installed-platform acceptance remain gates.
 
 ## 0.2.0-rc.3 candidate evidence
 
@@ -64,8 +79,10 @@ unpromoted.
 - The Codex platform trust hash is claimed only for the fixed Hook command. The
   embedded hash/size and digest-bound official publisher/postflight are the
   separate evidence binding runtime bytes. RC3 exact-tag installation, full
-  desktop restart, `/hooks` review, genuine SessionStart heartbeat, and strict
-  doctor pass remain promotion gates.
+  desktop restart, user trust review, genuine SessionStart heartbeat, and
+  strict doctor pass subsequently succeeded in one local macOS trial. The
+  trial's Constitution false positives prevented promotion of the matcher as
+  correct and led to RC4.
 
 ## 0.2.0-rc.2 candidate evidence
 

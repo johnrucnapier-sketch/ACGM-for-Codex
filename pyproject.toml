@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "acgm-codex"
-version = "0.2.0-rc.3"
+version = "0.2.0-rc.4"
 description = "Long-horizon coding drift control and local governance audit for Codex."
 requires-python = ">=3.10"
 authors = [

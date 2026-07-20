@@ -1138,6 +1138,18 @@ class BootstrapTests(unittest.TestCase):
                 ),
             },
         )
+        self.assertEqual(
+            preflight.KNOWN_OFFICIAL_RELEASES["0.2.0-rc.3"],
+            {
+                "revision": "40e3a04664a768517e712a9202bda1022482416d",
+                "manifest_sha256": (
+                    "69fd1cd26c61c8b4bd07490e6f9d38e8f31e37730ffe25bebe7648dbf1cb2dc2"
+                ),
+                "runtime_sha256": (
+                    "c81e1566ceb63bd1e2326201d11fc9469e5c0619f0314ebcb5eb2f649386931d"
+                ),
+            },
+        )
         self.assertLess(
             preflight._rc_version_order("0.1.0-rc.10"),
             preflight._rc_version_order(preflight.VERSION),
@@ -1151,8 +1163,11 @@ class BootstrapTests(unittest.TestCase):
         self.assertTrue(
             preflight._known_official_upgrade("0.2.0-rc.2", "v0.2.0-rc.2")
         )
-        self.assertFalse(
+        self.assertTrue(
             preflight._known_official_upgrade("0.2.0-rc.3", "v0.2.0-rc.3")
+        )
+        self.assertFalse(
+            preflight._known_official_upgrade("0.2.0-rc.4", "v0.2.0-rc.4")
         )
 
         temp, source, env, fake = self.upgrade_fixture()
@@ -2058,7 +2073,7 @@ class BootstrapTests(unittest.TestCase):
     def test_unknown_newer_foreign_scope_and_duplicate_installs_never_auto_upgrade(self) -> None:
         cases: list[tuple[str, str, dict[str, object]]] = [
             ("unknown_old_version", "0.1.0-rc.10", {}),
-            ("newer_version", "0.2.0-rc.4", {}),
+            ("newer_version", "0.2.0-rc.5", {}),
             ("null_scope", "0.1.0-rc.4", {"installed_scope": None}),
             ("wrong_scope", "0.1.0-rc.4", {"installed_scope": "project"}),
             (

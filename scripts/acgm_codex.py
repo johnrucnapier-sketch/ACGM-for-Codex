@@ -33,7 +33,7 @@ except ImportError:  # pragma: no cover - the supported platforms provide it.
     fcntl = None  # type: ignore[assignment]
 
 
-VERSION = "0.2.0-rc.3"
+VERSION = "0.2.0-rc.4"
 STATE_SCHEMA = "acgm-codex-state-v1"
 LEDGER_SCHEMA = "acgm-codex-event-v1"
 CASE_SCHEMA = "acgm-codex-case-v1"
@@ -47,6 +47,7 @@ QUICKSTART_COMPATIBLE_STATE_VERSIONS = (
     "0.1.0-rc.4",
     "0.2.0-rc.1",
     "0.2.0-rc.2",
+    "0.2.0-rc.3",
 )
 QUICKSTART_MANAGED_DIRECTORIES = (
     ".acgm",
@@ -1505,6 +1506,261 @@ def _risk_category(command: str) -> Optional[str]:
     return None
 
 
+def _shell_segments(command: str) -> Optional[list[list[str]]]:
+    """Tokenize shell words and keep control-separated commands independent."""
+
+    try:
+        lexer = shlex.shlex(
+            command.replace("\n", " ; "),
+            posix=True,
+            punctuation_chars=";&|<>",
+        )
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        tokens = list(lexer)
+    except ValueError:
+        return None
+    segments: list[list[str]] = []
+    current: list[str] = []
+    for token in tokens:
+        if token in {";", "&", "&&", "|", "||"}:
+            if current:
+                segments.append(current)
+                current = []
+            continue
+        current.append(token)
+    if current:
+        segments.append(current)
+    return segments
+
+
+def _constitution_operand(value: str) -> bool:
+    """Return whether one literal shell operand names the protected file."""
+
+    return Path(value).name.lower() == "constitution.md"
+
+
+def _short_option_has(option: str, flag: str) -> bool:
+    return bool(
+        option.startswith("-")
+        and not option.startswith("--")
+        and flag in option[1:]
+    )
+
+
+def _in_place_option(executable: str, option: str) -> bool:
+    if option == "--in-place" or option.startswith("--in-place="):
+        return True
+    if executable == "sed":
+        return bool(re.match(r"^-[Enru]*i", option))
+    return bool(re.match(r"^-[0-9pnlwa]*i", option))
+
+
+def _in_place_targets(executable: str, arguments: list[str]) -> list[str]:
+    """Separate sed/perl program operands from files changed in place."""
+
+    targets: list[str] = []
+    program_supplied = False
+    index = 0
+    while index < len(arguments):
+        argument = arguments[index]
+        if argument == "--":
+            remainder = arguments[index + 1 :]
+            if not program_supplied and remainder:
+                remainder = remainder[1:]
+            targets.extend(remainder)
+            break
+        if executable == "sed":
+            if argument in {"-e", "--expression", "-f", "--file"}:
+                program_supplied = True
+                index += 2
+                continue
+            if (
+                argument.startswith("--expression=")
+                or argument.startswith("--file=")
+                or (len(argument) > 2 and argument[:2] in {"-e", "-f"})
+            ):
+                program_supplied = True
+                index += 1
+                continue
+        else:
+            if argument in {"-e", "-E"}:
+                program_supplied = True
+                index += 2
+                continue
+            if len(argument) > 2 and argument[:2] in {"-e", "-E"}:
+                program_supplied = True
+                index += 1
+                continue
+            if argument in {"-I", "-M", "-m"}:
+                index += 2
+                continue
+        if argument.startswith("-"):
+            index += 1
+            continue
+        if not program_supplied:
+            program_supplied = True
+        else:
+            targets.append(argument)
+        index += 1
+    return targets
+
+
+def _segment_writes_constitution(tokens: list[str], *, depth: int = 0) -> bool:
+    """Bind one supported writer and its literal target within one shell segment."""
+
+    if depth > 4:
+        return False
+    for index, token in enumerate(tokens[:-1]):
+        if token in {">", ">>", ">|", "<>", "&>", "&>>"} and _constitution_operand(
+            tokens[index + 1]
+        ):
+            return True
+
+    index = 0
+    while index < len(tokens) and re.match(
+        r"^[A-Za-z_][A-Za-z0-9_]*=", tokens[index]
+    ):
+        index += 1
+    if index >= len(tokens):
+        return False
+    executable = Path(tokens[index]).name.lower()
+    arguments = tokens[index + 1 :]
+
+    if executable in {"sh", "bash", "dash", "ksh", "zsh"}:
+        for option_index, argument in enumerate(arguments[:-1]):
+            if argument == "-c" or _short_option_has(argument, "c"):
+                nested = _shell_segments(arguments[option_index + 1])
+                return bool(
+                    nested
+                    and any(
+                        _segment_writes_constitution(segment, depth=depth + 1)
+                        for segment in nested
+                    )
+                )
+        return False
+
+    if executable in {"command", "builtin", "exec", "sudo"}:
+        nested_index = 0
+        while nested_index < len(arguments) and arguments[nested_index].startswith("-"):
+            if arguments[nested_index] == "--":
+                nested_index += 1
+                break
+            if arguments[nested_index] in {"-a", "-C", "-g", "-h", "-p", "-u"}:
+                nested_index += 2
+            else:
+                nested_index += 1
+        return bool(
+            nested_index < len(arguments)
+            and _segment_writes_constitution(
+                arguments[nested_index:], depth=depth + 1
+            )
+        )
+
+    if executable == "env":
+        nested_index = 0
+        while nested_index < len(arguments):
+            argument = arguments[nested_index]
+            if argument == "--":
+                nested_index += 1
+                break
+            if argument in {"-u", "--unset", "-C", "--chdir"}:
+                nested_index += 2
+                continue
+            if argument.startswith("-") or re.match(
+                r"^[A-Za-z_][A-Za-z0-9_]*=", argument
+            ):
+                nested_index += 1
+                continue
+            break
+        return bool(
+            nested_index < len(arguments)
+            and _segment_writes_constitution(
+                arguments[nested_index:], depth=depth + 1
+            )
+        )
+
+    if executable in {"rm", "mv", "tee", "truncate", "touch", "chmod", "chown"}:
+        return any(_constitution_operand(argument) for argument in arguments)
+
+    if executable in {"cp", "install"}:
+        if any(
+            argument.startswith("--target-directory=")
+            and _constitution_operand(argument.split("=", 1)[1])
+            for argument in arguments
+        ):
+            return True
+        for option_index, argument in enumerate(arguments[:-1]):
+            if argument in {"-t", "--target-directory"} and _constitution_operand(
+                arguments[option_index + 1]
+            ):
+                return True
+        if executable == "install" and any(
+            argument in {"-d", "--directory"} for argument in arguments
+        ):
+            return any(_constitution_operand(argument) for argument in arguments)
+        literal_arguments = [
+            argument
+            for argument in arguments
+            if argument == "-" or not argument.startswith("-")
+        ]
+        return bool(
+            len(literal_arguments) >= 2
+            and _constitution_operand(literal_arguments[-1])
+        )
+
+    if executable in {"sed", "perl"}:
+        in_place = any(
+            _in_place_option(executable, argument)
+            for argument in arguments
+        )
+        return bool(
+            in_place
+            and any(
+                _constitution_operand(argument)
+                for argument in _in_place_targets(executable, arguments)
+            )
+        )
+
+    if executable == "git":
+        verb_index = 0
+        while verb_index < len(arguments):
+            argument = arguments[verb_index]
+            if argument == "-C" and verb_index + 1 < len(arguments):
+                verb_index += 2
+                continue
+            if argument.startswith("-"):
+                verb_index += 1
+                continue
+            break
+        if verb_index < len(arguments):
+            verb = arguments[verb_index]
+            operands = arguments[verb_index + 1 :]
+            if verb in {"restore", "checkout"}:
+                return any(_constitution_operand(argument) for argument in operands)
+
+    if executable == "dd":
+        return any(
+            argument.startswith("of=")
+            and _constitution_operand(argument.split("=", 1)[1])
+            for argument in arguments
+        )
+
+    if "export-case" in arguments:
+        for option_index, argument in enumerate(arguments):
+            if argument.startswith("--output=") and _constitution_operand(
+                argument.split("=", 1)[1]
+            ):
+                return True
+            if (
+                argument in {"-o", "--output"}
+                and option_index + 1 < len(arguments)
+                and _constitution_operand(arguments[option_index + 1])
+            ):
+                return True
+    return False
+
+
 def _constitution_write(
     tool_name: str, command: str, payload: Optional[dict[str, Any]] = None
 ) -> bool:
@@ -1530,21 +1786,10 @@ def _constitution_write(
         return False
     if tool_name != "Bash":
         return False
-    if not re.search(
-        r"(?:^|[^A-Za-z0-9_.-])CONSTITUTION\.md(?:$|[^A-Za-z0-9_.-])",
-        command,
-        re.IGNORECASE,
-    ):
-        return False
+    segments = _shell_segments(command)
     return bool(
-        re.search(
-            r"(?:>>?|\b(?:rm|mv|cp|tee|truncate|touch|chmod|chown)\b|"
-            r"\bsed\s+[^\n]*-[A-Za-z]*i|\bperl\s+[^\n]*-[A-Za-z]*i|"
-            r"\bgit\s+(?:restore\b|checkout\s+--)|\bdd\b[^\n]*\bof=|"
-            r"\binstall\b|\bexport-case\b[^\n]*(?:\s-o\s|--output(?:=|\s)))",
-            command,
-            re.IGNORECASE,
-        )
+        segments
+        and any(_segment_writes_constitution(segment) for segment in segments)
     )
 
 

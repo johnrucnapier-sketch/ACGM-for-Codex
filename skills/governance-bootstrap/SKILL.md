@@ -33,7 +33,8 @@ Set up governance automatically without replacing project-owned instructions or 
 The installed `acgm-codex quickstart` command governs one project after the
 plugin is present. When operating from the official release repository,
 `python3 scripts/quickstart.py` is the combined installer: it also installs a
-fresh plugin or upgrades one exactly verified official RC2/RC3/RC4/0.2-RC1/0.2-RC2 installation
+fresh plugin or upgrades one exactly verified official `0.1.0-rc.2` through
+`0.1.0-rc.4` or `0.2.0-rc.1` through `0.2.0-rc.3` installation
 under the same digest-bound authorization.
 
 1. Run `acgm-codex quickstart plan <verified-git-root> --json` through the resolved entry point. This phase must remain read-only.
@@ -53,7 +54,7 @@ under the same digest-bound authorization.
 
 Use `acgm-codex init <verified-git-root>` only when the user explicitly requests custom governance rather than the recommended preset, or when quickstart reports an existing-policy conflict. Preserve all existing files and prepare a bounded proposal for the user-owned content.
 
-Project quickstart authorization covers only local non-overwriting governance setup. The repository-level combined installer additionally covers its exact planned Codex marketplace/plugin writes, the manifest- and digest-bound stable Hook runtime publication, the narrow verified official RC2/RC3/RC4/0.2-RC1/0.2-RC2 replacement, and digest-bound roll-forward of a completely verified interrupted official transition. Neither form authorizes a release, deployment, unrelated destructive action, credential change, legacy/personal migration, private data adoption, or unknown conflict resolution.
+Project quickstart authorization covers only local non-overwriting governance setup. The repository-level combined installer additionally covers its exact planned Codex marketplace/plugin writes, the manifest- and digest-bound stable Hook runtime publication, the narrow verified official `0.1.0-rc.2` through `0.1.0-rc.4` or `0.2.0-rc.1` through `0.2.0-rc.3` replacement, and digest-bound roll-forward of a completely verified interrupted official transition. Neither form authorizes a release, deployment, unrelated destructive action, credential change, legacy/personal migration, private data adoption, or unknown conflict resolution.
 
 ## Activate and verify
 

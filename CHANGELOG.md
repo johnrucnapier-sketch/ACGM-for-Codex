@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.2.0-rc.4 — 2026-07-20 candidate; target-bound Constitution protection
+
+- Bind Constitution protection to a supported writer and its literal
+  `CONSTITUTION.md` operand inside the same shell segment. RC3's global regular
+  expressions could combine a read-only Constitution operand with an unrelated
+  writer-looking token elsewhere in a compound command and deny the whole tool
+  call.
+- Replace the greedy `sed`/`perl` in-place heuristic with token-aware option
+  handling. Hyphenated paths such as `session-grounding` and argument-bearing
+  options such as Perl `-Ilib` no longer look like in-place edits.
+- Preserve narrow write enforcement for shell redirections, read/write `<>`,
+  target-directed copy/install, move/remove, `tee`, in-place `sed`/`perl`, Git
+  restore/checkout, `dd of=`, export-case output, and common shell/env/command/
+  sudo wrappers. Copying or streaming the Constitution to a backup remains
+  read-only and is allowed.
+- Add regression fixtures for the two real RC3 read-only false-positive shapes
+  and for direction-aware read/write variants. A denied Hook event is not
+  counted as a successful intervention merely because the Hook ran.
+- Add the immutable public RC3 revision, manifest digest, and stable-runtime
+  digest to the explicit official-upgrade allowlist, and add RC3 to the
+  project-adapter compatibility set. Unknown, modified, or future predecessors
+  remain fail-closed.
+
 ## 0.2.0-rc.3 — 2026-07-19 candidate; stable Hook runtime and restart-safe trust binding
 
 - Move the installed Hook runtime out of Codex's prunable versioned plugin cache

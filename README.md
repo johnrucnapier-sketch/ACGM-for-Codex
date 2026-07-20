@@ -8,7 +8,7 @@ ACGM for Codex 是 ACGM（Agent Coding Governance Methodology）的独立 Codex
 
 [English](README.en.md)
 
-> **当前状态：`0.2.0-rc.3`。** 这是公开预览候选版，不是稳定发行版。自动测试可以证明
+> **当前状态：`0.2.0-rc.4`。** 这是公开预览候选版，不是稳定发行版。自动测试可以证明
 > 包结构和运行时行为；只有完成全新 Codex task 中的 Hook 信任与真实工具调用 E2E 后，
 > 才能声称自动机制已在当前 Codex 版本上运行。
 
@@ -68,7 +68,7 @@ Agent 自动克隆准确 tag，并运行：
 
 ```bash
 ACGM_SOURCE="$(mktemp -d)/ACGM-for-Codex"
-git clone --branch v0.2.0-rc.3 --depth 1 \
+git clone --branch v0.2.0-rc.4 --depth 1 \
   https://github.com/johnrucnapier-sketch/ACGM-for-Codex.git "$ACGM_SOURCE"
 python3 "$ACGM_SOURCE/scripts/quickstart.py" \
   --project /准确项目的绝对路径 --dry-run --json
@@ -89,21 +89,21 @@ python3 "$ACGM_SOURCE/scripts/quickstart.py" --project /准确项目的绝对路
 任一事实变化都会使授权失效。
 
 全新安装只调用两条固定官方命令：`codex plugin marketplace add
-johnrucnapier-sketch/ACGM-for-Codex --ref v0.2.0-rc.3 --json` 与 `codex plugin
+johnrucnapier-sketch/ACGM-for-Codex --ref v0.2.0-rc.4 --json` 与 `codex plugin
 add acgm-codex@acgm-codex --json`。唯一的插件自动升级例外，是一个已启用、user scope、
 来源/ref/policy/marketplace snapshot/package bytes/唯一 cache 全部验证通过的官方
 `0.1.0-rc.2`、`0.1.0-rc.3`、`0.1.0-rc.4`、`0.2.0-rc.1` 或 `0.2.0-rc.2`；此时 digest 会明确绑定
 `marketplace remove -> exact-ref marketplace add -> plugin add` 三步。之后再次独立核对
 目标版本和 cache package bytes；外部命令中途失败会报告 partial/recheck，不会声称已回滚。
-升级期间，已经打开的旧 task 仍会调用启动时记住的旧版本 Hook 命令。RC3 把完整 runtime
+升级期间，已经打开的旧 task 仍会调用启动时记住的旧版本 Hook 命令。RC3 及后续版本把完整 runtime
 原子发布到稳定的 `PLUGIN_DATA/runtime/acgm_codex.py`，不再让新 Hook 依赖会被 Codex 清理的
 版本 cache。Codex 的信任 hash 绑定固定 Hook 命令；该命令内嵌本版 runtime 的精确大小和
 SHA-256，只执行同一次读取且完全匹配的字节。runtime 变化会改变 Hook 定义并重新触发平台审核，
 不能在固定信任命令下静默换代码。缺失、篡改、symlink、FIFO 或特殊文件都快速返回空结果，
 不会把 Stop Hook 错误变成模型循环。这不是 Lite 模式，也不放宽完整 runtime 的治理规则。
-旧版 bridge 只承担升级中的过渡恢复；RC3 仍会严格识别 Codex 在 marketplace 更新后出现的“旧版本 cache + 新 ref”短暂重关联状态；
+旧版 bridge 只承担升级中的过渡恢复；RC3 及后续版本仍会严格识别 Codex 在 marketplace 更新后出现的“旧版本 cache + 新 ref”短暂重关联状态；
 只有旧 cache、目标 checkout、scope、policy 与官方发布 pin 全部匹配才继续。被 RC1 中断的同类
-状态必须先生成新的 RC3 digest，再自动执行 remove/add/plugin-add，不会要求用户手工修配置。
+状态必须先生成新的当前版本 digest，再自动执行 remove/add/plugin-add，不会要求用户手工修配置。
 插件安装成功后若项目 root 又发生变化，组合结果会明确返回
 `PROJECT_RECHECK_REQUIRED` 与 `partial=true`，不会抛出无人可读的 traceback。
 
@@ -153,7 +153,8 @@ acgm-codex quickstart status /准确项目绝对路径 --json
 
 `standard-v1` 是版本化安全预设。用户对 quickstart 的一次授权即表示采用这些准确字节，
 不要求亲手输入 Constitution。已有有效策略始终保留；只有版本号变化且既有 baseline
-仍完全匹配、而且来源是明确兼容的 RC2/RC3/RC4/0.2-RC1/0.2-RC2 project adapter 时，quickstart 才会在同一次
+仍完全匹配、而且来源是明确兼容的 `0.1.0-rc.2` 至 `0.1.0-rc.4` 或
+`0.2.0-rc.1` 至 `0.2.0-rc.3` project adapter 时，quickstart 才会在同一次
 授权中安全升级 adapter state；未知或更高版本不会被自动降级。健康、已手工 activate 的项目
 也可以在保留 activation id 的前提下采用缺失的标准 decision/snapshot。其他 active drift、
 未知 receipt、并发 Git/index 变化、未知占位符、symlink 或非普通文件会在自动吸收前停止。

@@ -1,7 +1,7 @@
 # ACGM for Codex one-consent installation / 一次授权安装
 
-Public candidate: **`0.2.0-rc.3`**, immutable source tag:
-**`v0.2.0-rc.3`**.
+Public candidate: **`0.2.0-rc.4`**, immutable source tag:
+**`v0.2.0-rc.4`**.
 
 ACGM uses the official Codex Git marketplace. It never hand-edits Codex
 `config.toml`, never copies private Event Ledger data, and never silently
@@ -23,7 +23,7 @@ The Agent performs:
 
 ```bash
 ACGM_SOURCE="$(mktemp -d)/ACGM-for-Codex"
-git clone --branch v0.2.0-rc.3 --depth 1 \
+git clone --branch v0.2.0-rc.4 --depth 1 \
   https://github.com/johnrucnapier-sketch/ACGM-for-Codex.git "$ACGM_SOURCE"
 python3 "$ACGM_SOURCE/scripts/quickstart.py" \
   --project /absolute/path/to/the/exact/project \
@@ -84,7 +84,9 @@ scope、ADR 或 snapshot，也不重复询问同一授权。
    `init` flow;
 10. safely adopts the preset into a healthy already-active project when only the
     missing preset decision/snapshot must be added, and allows project adapter
-    upgrades only from the explicit compatible RC2/RC3/RC4/0.2-RC1/0.2-RC2 set—not from unknown
+    upgrades only from the explicit compatible
+    `0.1.0-rc.2` through `0.1.0-rc.4` and `0.2.0-rc.1` through
+    `0.2.0-rc.3` set—not from unknown
     or newer versions;
 11. activates the project without rotating an already-valid activation;
 12. runs local doctor postconditions and records a private progress receipt for
@@ -100,7 +102,7 @@ one remaining Codex-owned trust boundary, not a failed installation.
 
 Codex records trust against each exact non-managed Hook definition. The
 platform trust hash binds that fixed command, not an independently mutable
-runtime file. Each RC3 command therefore embeds the exact authorized runtime
+runtime file. Each RC3-and-later command therefore embeds the exact authorized runtime
 size and SHA-256 and executes only the same bytes it read and verified; changing
 runtime bytes changes every Hook definition and requires a new review. The
 digest-bound installer and postflight separately bind the stable runtime
@@ -140,7 +142,8 @@ One-consent quickstart is intentionally narrow. It does not authorize or perform
 - removal, migration, or adoption of `acgm-codex@personal`;
 - replacement of duplicate, unknown-source, wrong-scope, newer, unrecognized,
   or otherwise wrong-version installs. The only exception is the exact verified
-  official user-level RC2/RC3/RC4/0.2-RC1/0.2-RC2 upgrade described above;
+  official user-level `0.1.0-rc.2` through `0.1.0-rc.4` or
+  `0.2.0-rc.1` through `0.2.0-rc.3` upgrade described above;
 - overwriting an unknown Constitution, `AGENTS.md`, scope, decision, or snapshot;
 - overwriting an unknown `.acgm/quickstart.json` receipt, absorbing a concurrent
   Git/index/governance change into the activation baseline, or downgrading an

@@ -25,7 +25,8 @@ When the user explicitly asks to install or update ACGM for Codex:
 4. Never remove, replace, merge, or adopt `acgm-codex@personal`, duplicate
    installs, unknown sources, another scope, newer/unknown versions, or private
    Event Ledger/HMAC content. The sole plugin-upgrade exception is one enabled
-   user-scope official RC2/RC3/RC4/0.2-RC1/0.2-RC2 whose exact old source/ref/policy,
+   user-scope official `0.1.0-rc.2` through `0.1.0-rc.4` or `0.2.0-rc.1`
+   through `0.2.0-rc.3` whose exact old source/ref/policy,
    marketplace snapshot, bytes, and sole cache entry all verify. The plan digest
    must explicitly include the fixed marketplace remove, exact-ref add, and
    plugin add sequence. A fully verified interrupted official transition may be
