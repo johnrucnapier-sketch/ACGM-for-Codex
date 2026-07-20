@@ -223,6 +223,7 @@ class PackageContractTests(unittest.TestCase):
                 self.assertIn(RUNTIME_SHA256, handler["command"])
                 self.assertIn(f"e={RUNTIME_SIZE}", handler["command"])
                 self.assertIn("O_NONBLOCK", handler["command"])
+                self.assertIn("os.lstat", handler["command"])
                 self.assertIn("S_ISREG", handler["command"])
                 self.assertNotIn("PLUGIN_ROOT", handler["command"])
                 self.assertEqual(handler["timeout"], timeout)

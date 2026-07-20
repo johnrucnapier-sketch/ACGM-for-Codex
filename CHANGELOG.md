@@ -35,6 +35,9 @@
 - Pin repository text checkout bytes to LF across platforms so Hook/runtime
   digests and the package manifest do not depend on Git's Windows newline
   conversion. Windows runtime support remains intentionally fail-closed.
+- Reject a symlinked stable runtime with `lstat` before opening it even on
+  platforms that do not expose `O_NOFOLLOW`; supported POSIX platforms retain
+  the additional no-follow open and descriptor-level regular-file checks.
 
 ## 0.2.0-rc.2 — 2026-07-19 candidate; installed-platform upgrade and Hook lifecycle repair
 
