@@ -28,6 +28,13 @@
   symlinked runtimes; unsafe parents; atomic failure cleanup and zero-progress
   writes; unset `PLUGIN_DATA`; wrong-sized files; FIFO fail-open behavior; and
   the command-hash/runtime-byte authorization boundary.
+- Accept an already-published exact RC3 fail-open bridge while planning a
+  verified official predecessor upgrade. This closes the real recovery path in
+  which an old task must stay executable while emergency full-cache copies are
+  removed before the digest-bound upgrade.
+- Pin repository text checkout bytes to LF across platforms so Hook/runtime
+  digests and the package manifest do not depend on Git's Windows newline
+  conversion. Windows runtime support remains intentionally fail-closed.
 
 ## 0.2.0-rc.2 — 2026-07-19 candidate; installed-platform upgrade and Hook lifecycle repair
 

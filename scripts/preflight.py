@@ -1785,7 +1785,7 @@ def inspect_codex_state(
             codex_home,
             expected_version=cache_version,
             allowed_bridge_targets=(cache_version, VERSION)
-            if official_transition_base
+            if official_upgrade_base or official_transition_base
             else (cache_version,),
         )
         try:

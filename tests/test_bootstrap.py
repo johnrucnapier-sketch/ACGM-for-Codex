@@ -1427,6 +1427,25 @@ class BootstrapTests(unittest.TestCase):
                 "bridge-created",
             )
 
+    def test_known_official_upgrade_accepts_exact_preexisting_target_bridge(self) -> None:
+        temp, source, env, fake = self.upgrade_fixture(
+            old_version="0.2.0-rc.2"
+        )
+        with temp:
+            bridge = bootstrap._ensure_one_old_hook_path(
+                env, from_version="0.2.0-rc.1"
+            )
+            self.assertTrue(bridge["protected"])
+            self.assertEqual(bridge["state"], "bridge-created")
+
+            evaluated = preflight.evaluate(source, env=env, runner=fake)
+
+            self.assertEqual(evaluated["status"], "READY_FOR_OFFICIAL_UPGRADE")
+            inventory = evaluated["codex"]["cache_check"]["inventory"]
+            self.assertTrue(inventory["verified"])
+            self.assertEqual(inventory["versions"], ["0.2.0-rc.2"])
+            self.assertEqual(inventory["hook_bridges"], ["0.2.0-rc.1"])
+
     def test_real_codex_reassociation_continues_only_with_exact_old_cache(
         self,
     ) -> None:

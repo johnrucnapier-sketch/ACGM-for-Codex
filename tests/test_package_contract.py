@@ -183,6 +183,10 @@ class PackageContractTests(unittest.TestCase):
         ):
             self.assertIn(required, workflow)
 
+    def test_release_checkout_keeps_platform_neutral_lf_bytes(self) -> None:
+        attributes = (ROOT / ".gitattributes").read_text(encoding="utf-8")
+        self.assertIn("* text=auto eol=lf", attributes.splitlines())
+
     def test_default_hook_path_and_inventory(self) -> None:
         self.assertTrue(HOOK_PATH.is_file())
         self.assertFalse((ROOT / "hooks.json").exists())
