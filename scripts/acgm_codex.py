@@ -33,7 +33,7 @@ except ImportError:  # pragma: no cover - the supported platforms provide it.
     fcntl = None  # type: ignore[assignment]
 
 
-VERSION = "0.2.0-rc.4"
+VERSION = "0.3.0-rc.1"
 STATE_SCHEMA = "acgm-codex-state-v1"
 LEDGER_SCHEMA = "acgm-codex-event-v1"
 CASE_SCHEMA = "acgm-codex-case-v1"
@@ -48,6 +48,7 @@ QUICKSTART_COMPATIBLE_STATE_VERSIONS = (
     "0.2.0-rc.1",
     "0.2.0-rc.2",
     "0.2.0-rc.3",
+    "0.2.0-rc.4",
 )
 QUICKSTART_MANAGED_DIRECTORIES = (
     ".acgm",
@@ -2067,8 +2068,10 @@ def _hook_session_like(
     if status["state"] == GOVERNED:
         return _hook_context(
             official,
-            "ACGM Codex is active. Read CONSTITUTION.md, AGENTS.md, and "
-            ".governance/scope.yml before consequential changes."
+            "ACGM observed this Hook; project governance files match the activation baseline. "
+            "Use session-grounding to verify current code, Git state, and open decisions. "
+            "Use decision-ledger for material decision threads; draft without interrupting work. "
+            "This event does not prove that other Hooks ran."
             + root_note
             + obligation_note,
         )
@@ -2084,8 +2087,8 @@ def _hook_session_like(
         return result
     return _hook_context(
         official,
-        "ACGM Codex is installed but not active for this project. Run "
-        "`acgm-codex init`, review the assets, then run `acgm-codex activate`."
+        "ACGM Codex is installed but not active for this project. If the user requests "
+        "setup, use governance-bootstrap with this exact project root."
         + root_note
         + obligation_note,
     )
@@ -2392,6 +2395,11 @@ def _run_hook(dispatch: str, project: Optional[str]) -> int:
         try:
             root = _project_root(target)
         except AmbiguousWorkspace:
+            # Explain root ambiguity at entry/recovery, without repeating it on
+            # every tool and Stop. No project is selected and no state is written.
+            if dispatch not in {"session-start", "subagent-start"}:
+                _json_output({})
+                return 0
             official = HOOK_NAMES[dispatch]
             text = (
                 "ACGM detected a multi-repository workspace and did not choose or "
@@ -2399,8 +2407,6 @@ def _run_hook(dispatch: str, project: Optional[str]) -> int:
                 "exact path to `acgm-codex`."
             )
             result = _hook_context(official, text)
-            if dispatch not in {"session-start", "subagent-start"}:
-                result["systemMessage"] = text
             _json_output(result)
             return 0
         if not _supported_platform():

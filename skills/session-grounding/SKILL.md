@@ -26,7 +26,7 @@ Prefer `acgm-codex`. If unavailable, resolve the absolute directory containing t
 
 2. Confirm the intended project, Git root, branch, and worktree before reading or writing project files. Stop if the cwd is wrong.
 3. Run `acgm-codex doctor <verified-git-root>` through the resolved entry point.
-4. Follow the governance paths reported by project configuration or `doctor`; inspect the latest snapshot and the ADRs relevant to the task. Do not guess paths or assume that the newest timestamp contains the governing decision.
+4. Read the Constitution and root rules, then follow their governance pointers; inspect the relevant snapshot, ADRs, and existing `.governance/OPEN_THREADS.md` and claims. Open questions and unconfirmed drafts are not accepted decisions. Do not guess paths or assume that the newest timestamp contains the governing decision.
 5. Reconcile claims with current files and Git history. Treat a missing artifact as missing evidence, not permission to invent it.
 
 ## Preserve the evidence hierarchy
@@ -54,5 +54,15 @@ State concisely:
 6. next safe action.
 
 After compaction or handoff, restate this grounding note before continuing. Re-run the checks when repository state may have changed.
+
+Continue within the user's existing authorization. Grounding does not require a
+new approval ritual; ask only when a material uncertainty changes the authorized
+scope or outcome. Match verification to the change and avoid repeating unchanged
+checks. For material decisions, use `decision-ledger` to preserve the reason and
+remaining questions without turning normal work into a command log.
+
+Distinguish source verified, configuration verified, runtime observed, and project
+governed. One observed Hook proves only that event ran; a cached install record or
+historical heartbeat does not establish coverage in the current task.
 
 Treat the personal Codex hook as a deterministic guardrail, not a complete safety boundary. It does not make stale memory current or prove that the intended project was selected.

@@ -1607,6 +1607,52 @@ class RuntimeTests(unittest.TestCase):
             self.assertFalse((root / ".governance").exists())
             self.assertFalse((root / ".acgm").exists())
 
+    def test_ambiguous_workspace_warns_at_entry_without_tool_or_stop_spam(self) -> None:
+        workspace, repositories = self.make_container_workspace("alpha", "beta")
+        for dispatch, event in (
+            ("session-start", "SessionStart"),
+            ("subagent-start", "SubagentStart"),
+        ):
+            _, result = self.hook(dispatch, self.payload(event, cwd=str(workspace)))
+            self.assertIn("multi-repository workspace", result["hookSpecificOutput"]["additionalContext"])
+        for dispatch, event in (
+            ("pre-tool", "PreToolUse"),
+            ("post-tool", "PostToolUse"),
+            ("permission-request", "PermissionRequest"),
+            ("pre-compact", "PreCompact"),
+            ("stop", "Stop"),
+        ):
+            _, result = self.hook(dispatch, self.payload(event, cwd=str(workspace)))
+            self.assertEqual(result, {})
+        self.assertFalse(self.data.exists())
+        for root in [workspace, *repositories]:
+            self.assertFalse((root / ".acgm").exists())
+            self.assertFalse((root / ".governance").exists())
+
+    def test_session_context_scopes_runtime_claim_and_routes_decision_work(self) -> None:
+        self.init_activate()
+        _, result = self.hook("session-start", self.payload("SessionStart"))
+        context = result["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("decision-ledger", context)
+        self.assertIn("does not prove that other Hooks ran", context)
+
+    def test_decision_drafts_do_not_rebaseline_or_create_stop_obligations(self) -> None:
+        self.init_activate()
+        state_path = self.project / ".acgm" / "codex.json"
+        baseline = state_path.read_bytes()
+        governance = self.project / ".governance"
+        (governance / "claims").mkdir()
+        (governance / "claims" / "C-test.md").write_text("# Unconfirmed design draft\n")
+        (governance / "OPEN_THREADS.md").write_text("# Open questions\n\nStorage format remains open.\n")
+        status = json.loads(self.cli("doctor", str(self.project), "--json").stdout)
+        self.assertEqual(status["project_state"], "GOVERNED")
+        self.assertEqual(self.hook("stop", self.payload("Stop"))[1], {})
+        self.assertEqual(state_path.read_bytes(), baseline)
+        (governance / "decisions" / "ADR-test.md").write_text("# Accepted storage decision\n\nUse the reviewed format.\n")
+        status = json.loads(self.cli("doctor", str(self.project), "--json").stdout)
+        self.assertEqual(status["project_state"], "DRIFTED")
+        self.assertEqual(state_path.read_bytes(), baseline)
+
     def test_inactive_residual_adapter_does_not_hide_ambiguous_container(self) -> None:
         workspace, repositories = self.make_container_workspace("alpha", "beta")
         state_path = workspace / ".acgm" / "codex.json"

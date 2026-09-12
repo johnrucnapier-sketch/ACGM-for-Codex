@@ -22,6 +22,7 @@ VERSION_PATTERN = re.compile(
     r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$"
 )
 EXPECTED_SKILLS = {
+    "decision-ledger",
     "activity-report",
     "governance-bootstrap",
     "session-grounding",

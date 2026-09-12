@@ -1,0 +1,4 @@
+interface:
+  display_name: "ACGM Decision Ledger"
+  short_description: "Preserve decisions without interrupting work"
+  default_prompt: "Use $decision-ledger to preserve this project’s material decisions and open questions."

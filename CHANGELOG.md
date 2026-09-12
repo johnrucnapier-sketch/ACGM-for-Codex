@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.3.0-rc.1 — 2026-09-12 release candidate
+
+- Adapt the decision-ledger workflow from ACGM for Claude Code 0.9.2: preserve
+  material open questions and unconfirmed claims, promote only on actual human
+  rulings, and carry unfinished reasoning through grounding. This is advisory;
+  it adds no transcript reader, automatic approval, database, or Stop loop.
+- Add claim/ADR templates and include them in both package distribution paths.
+- Report multi-repository ambiguity at session/subagent entry, including resume
+  and compaction, instead of repeating the same warning on every tool and Stop.
+  Ambiguous roots still select and modify no project.
+- State that an observed startup Hook proves only that event, and route inactive
+  project setup through the existing authorized bootstrap workflow.
+- Pin the verified 0.2.0-rc.4 predecessor for existing installation and adapter
+  upgrade paths. Preserve the state schema, preset bytes, Event Ledger, trust
+  boundary, and exact runtime hash/size binding.
+- Source and isolated installed-cache tests passed. Real desktop Hook trust and
+  task activation remain separate acceptance stages; see docs/CLAUDE-092-ALIGNMENT.md.
+
 ## 0.2.0-rc.4 — 2026-07-20 candidate; target-bound Constitution protection
 
 - Bind Constitution protection to a supported writer and its literal

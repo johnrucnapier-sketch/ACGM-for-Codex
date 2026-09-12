@@ -9,13 +9,14 @@ source-minimized local Event Ledger.
 
 [中文](README.md)
 
-> **Status: `0.2.0-rc.4`.** This is a public-preview release candidate, not a stable
+> **Release candidate: `0.3.0-rc.1`.** Verify the exact GitHub tag before installation.
+> Installed package state and current-task activation are separate checks. This is not a stable
 > release. Automated tests can validate the package and runtime. Automatic Hook
 > behavior is not considered verified until Hook trust and real tool-call E2E pass
 > in a completely new task on the installed Codex version.
 
 This product does not overwrite or replace
-[ACGM for Claude Code](https://github.com/johnrucnapier-sketch/Agent-Coding-Governance-Methodology).
+[ACGM for Claude Code](https://github.com/johnrucnapier-sketch/ACGM-for-Claude-Code).
 The two products have separate plugin identities, lifecycle protocols, install
 locations, and local data namespaces.
 
@@ -30,13 +31,18 @@ or a new worktree. ACGM for Codex separates three guarantees:
 | Skills | Reusable workflows for bootstrap, recovery, risky changes, and reporting | Explicitly or implicitly selected |
 | Hooks and runtime | Health checks, narrow interception, obligation tracking, and a local ledger | Deterministic guardrails, not an absolute security boundary |
 
-Current Codex documentation says `PreToolUse` interception is incomplete for
-`unified_exec` and does not cover every tool path. Personal plugins can also be
+Hook coverage varies by platform version and tool path; consult the
+[current official contract](https://learn.chatgpt.com/docs/hooks) and test the target version. Personal plugins can also be
 disabled, and their Hooks must be reviewed and trusted. ACGM therefore never
 equates “installed” with “fully enforced.”
 
 ## Capabilities
 
+- Decision preservation adapted from Claude 0.9.2: `decision-ledger` keeps material
+  open questions and unconfirmed claims in the repository; actual human rulings
+  become ADRs. Drafting does not interrupt work. This is an advisory skill, with
+  no transcript parser or automatic promotion. See the
+  [alignment review](docs/CLAUDE-092-ALIGNMENT.md) for compatibility and limits.
 - Five project states: `INSTALLED_NOT_BOOTSTRAPPED`, `PARTIALLY_GOVERNED`,
   `GOVERNED`, `DRIFTED`, and `BROKEN`.
 - Startup and subagent grounding through `SessionStart` and `SubagentStart`.
@@ -52,8 +58,8 @@ equates “installed” with “fully enforced.”
 - A source-minimized `PreCompact` heartbeat only—not a project snapshot or a
   copy of compacted context—and renewed grounding from current files afterward.
 - A local, append-only, source-minimized Event Ledger.
-- Four skills: `governance-bootstrap`, `session-grounding`, `truth-first`, and
-  `activity-report`.
+- Five skills: `governance-bootstrap`, `session-grounding`, `truth-first`, and
+  `activity-report`, and `decision-ledger`.
 - One-consent quickstart that provisions a versioned governance preset,
   activates the exact project, and checks local postconditions.
 - The `acgm-codex` CLI with `quickstart`, `init`, `activate`, `doctor`, `report`,
@@ -80,7 +86,7 @@ The Agent clones the exact tag and runs:
 
 ```bash
 ACGM_SOURCE="$(mktemp -d)/ACGM-for-Codex"
-git clone --branch v0.2.0-rc.4 --depth 1 \
+git clone --branch v0.3.0-rc.1 --depth 1 \
   https://github.com/johnrucnapier-sketch/ACGM-for-Codex.git "$ACGM_SOURCE"
 python3 "$ACGM_SOURCE/scripts/quickstart.py" \
   --project /absolute/path/to/the/exact/project --dry-run --json
@@ -106,11 +112,11 @@ and identity, existing managed-file hashes, and every proposed byte. Any changed
 fact invalidates the grant before apply.
 
 For a fresh install, bootstrap invokes `codex plugin marketplace add
-johnrucnapier-sketch/ACGM-for-Codex --ref v0.2.0-rc.4 --json` and then `codex
+johnrucnapier-sketch/ACGM-for-Codex --ref v0.3.0-rc.1 --json` and then `codex
 plugin add acgm-codex@acgm-codex --json`. It independently verifies the exact
 marketplace source/ref, plugin name/version/enabled state, and cached package
 bytes. The sole automatic plugin-upgrade exception is one enabled, user-scope
-official `0.1.0-rc.2`, `0.1.0-rc.3`, `0.1.0-rc.4`, `0.2.0-rc.1`, or `0.2.0-rc.2` whose source, ref, policy,
+official `0.1.0-rc.2` through `0.1.0-rc.4` or `0.2.0-rc.1` through `0.2.0-rc.4` whose source, ref, policy,
 marketplace snapshot, package bytes, and sole cache entry all verify. That
 digest explicitly binds marketplace remove, exact-ref marketplace add, and
 plugin add. A failed external mutation is reported as partial/recheck state; it
@@ -159,7 +165,7 @@ still show its own network, filesystem, or command-permission prompts; ACGM does
 not bypass Codex or OS security.
 
 Legacy `acgm-codex@personal`, duplicates, another scope/source/ref, unknown
-versions, and newer versions are fail-closed; the five exact verified official
+versions, and newer versions are fail-closed; the exact verified official
 candidate paths above are the only plugin-upgrade exceptions. Under the
 digest-bound install plan, bootstrap publishes only the exact release runtime
 to `PLUGIN_DATA/runtime/acgm_codex.py`; it never adopts, resets, or moves the
@@ -200,7 +206,7 @@ those exact bytes; the user does not have to type a Constitution. Existing
 substantive policy is preserved. Version-only adapter drift with an otherwise
 matching baseline is upgraded in the same authorization only from the explicit
 compatible `0.1.0-rc.2` through `0.1.0-rc.4` or `0.2.0-rc.1` through
-`0.2.0-rc.3` project-adapter set; an unknown or newer state is never
+`0.2.0-rc.4` project-adapter set; an unknown or newer state is never
 automatically downgraded. A healthy manually activated project may adopt its
 missing standard decision/snapshot while preserving the activation id. Unknown
 receipts, concurrent Git/index changes, unknown placeholders, symlinks,

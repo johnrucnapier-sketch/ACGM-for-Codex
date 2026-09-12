@@ -1166,8 +1166,11 @@ class BootstrapTests(unittest.TestCase):
         self.assertTrue(
             preflight._known_official_upgrade("0.2.0-rc.3", "v0.2.0-rc.3")
         )
-        self.assertFalse(
+        self.assertTrue(
             preflight._known_official_upgrade("0.2.0-rc.4", "v0.2.0-rc.4")
+        )
+        self.assertFalse(
+            preflight._known_official_upgrade(preflight.VERSION, preflight.TAG)
         )
 
         temp, source, env, fake = self.upgrade_fixture()
@@ -1379,6 +1382,18 @@ class BootstrapTests(unittest.TestCase):
                         "installed_cache_bytes_unverified",
                         evaluated["error_codes"],
                     )
+
+    def test_rc4_predecessor_upgrade_preserves_private_data(self) -> None:
+        temp, source, env, fake = self.upgrade_fixture(old_version="0.2.0-rc.4")
+        with temp:
+            private = Path(env["CODEX_HOME"]) / "plugins" / "data" / "acgm-codex"
+            private.mkdir(parents=True, exist_ok=True)
+            sentinel = private / "private-preservation-fixture"
+            sentinel.write_bytes(b"private data must survive the upgrade")
+            result = authorized_execute(source, env=env, runner=fake)
+            self.assertTrue(result["ok"], result)
+            self.assertEqual(result["status"], "INSTALLED_ENABLED_PENDING_HOOK_TRUST")
+            self.assertEqual(sentinel.read_bytes(), b"private data must survive the upgrade")
 
     def test_known_official_upgrade_executes_fixed_sequence_and_verifies_each_step(self) -> None:
         temp, source, env, fake = self.upgrade_fixture()

@@ -23,6 +23,7 @@ ACGM for Codex 同时包含插件机械代码与编码治理方法论文本，�
 | `skills/**/SKILL.md` YAML frontmatter | MIT (`LICENSE-CODE`) |
 | `skills/**/agents/openai.yaml` | MIT (`LICENSE-CODE`) |
 | `skills/**/SKILL.md` prose body | CC-BY-4.0 (`LICENSE-DOCS`) |
+| `skills/**/assets/**` | MIT (`LICENSE-CODE`) |
 | `skills/**/references/**` | CC-BY-4.0 (`LICENSE-DOCS`) |
 | `README.md`, `README.en.md` | CC-BY-4.0 (`LICENSE-DOCS`) |
 | `AGENTS.md`, `CLAUDE.md`, `INSTALL.md` | CC-BY-4.0 (`LICENSE-DOCS`) |
@@ -37,3 +38,8 @@ ACGM for Codex 同时包含插件机械代码与编码治理方法论文本，�
   additionally requires attribution for the methodology and documentation.
 - In practice, attributing ACGM for Codex as a whole satisfies both tracks.
 - 两种许可证都允许修改与商用；方法论及文档采用的 CC-BY-4.0 另要求署名。
+
+Decision-ledger workflow adapted from johnrucnapier-sketch and Claude Opus 5,
+[ACGM for Claude Code 0.9.2](https://github.com/johnrucnapier-sketch/ACGM-for-Claude-Code/tree/c2ca0a2913d376d7eefee98fd6549774a0aa7961),
+under CC-BY-4.0. Adaptation changes: Codex skill routing, existing task authority,
+project-defined branch workflow, collision-aware IDs, and explicit advisory limits.

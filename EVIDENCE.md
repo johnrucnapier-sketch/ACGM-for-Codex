@@ -237,3 +237,28 @@ the complete independent runtime evidence chain proves the exact candidate.
 - Claude Code V3 test results do not validate the Codex adapter.
 - A single incident or arbitrary age threshold cannot create a universal hard
   governance rule.
+
+## 0.3.0-rc.1 source validation — 2026-09-12
+
+- Reference source: Claude product 0.9.2 at `c2ca0a2`; its 68 tests passed.
+  These results are not Codex validation.
+- Codex baseline passed 178 tests; the candidate passed the release checker,
+  including all five skill validators, plugin contract, byte manifest, and
+  180 regression tests on macOS / Python 3.14.5. A final targeted run passed
+  23 tests, including two new checks for draft/ADR activation boundaries and
+  RC4 upgrade preservation, plus package/release-tool checks.
+- Ambiguous-root fixtures verify entry warnings, quiet tool/Stop callbacks, and
+  no automatic project selection or data/governance creation.
+- The decision-ledger skill is advisory. Agent drafting accuracy, actual human
+  confirmation, installed skill discovery and real platform E2E remain unverified.
+- No new source version has been published or installed. Existing private data
+  and user-project governance were not migrated.
+
+## Installation validation — 2026-09-12
+
+- Full source release check: 182 tests plus plugin/skill/manifest contracts pass.
+- Real Codex CLI 0.153.4 local installation in a disposable profile succeeded.
+  48 installed files matched their source; all five skills were included.
+- Running the runtime suite from that installed cache passed 70 tests.
+- These remain isolated installation and runtime-contract checks, not live
+  desktop Hook trust, skill behavior acceptance, or a stable-release claim.

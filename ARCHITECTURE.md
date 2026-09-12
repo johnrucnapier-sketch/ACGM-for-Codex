@@ -38,7 +38,7 @@ then uses the official Git marketplace CLI. It independently verifies the
 resulting marketplace source/ref, plugin identity/version/enabled state, and
 cached package bytes. A fresh install is add/add. The only automatic plugin
 replacement is a digest-bound official `0.1.0-rc.2` through `0.1.0-rc.4` or
-`0.2.0-rc.1` through `0.2.0-rc.3` upgrade after both the old
+`0.2.0-rc.1` through `0.2.0-rc.4` upgrade after both the old
 marketplace tag snapshot and sole installed cache match the verified old release;
 its fixed sequence is marketplace remove, exact-ref marketplace add, and plugin
 add. Every step is re-inspected. Because an already-open Codex task retains the
@@ -96,7 +96,7 @@ baseline still matches, the approved plan may update the adapter version and
 baseline without replacing project-owned policy or rotating its activation ID.
 That project-adapter exception accepts only the explicit compatible
 `0.1.0-rc.2` through `0.1.0-rc.4` or `0.2.0-rc.1` through
-`0.2.0-rc.3` set and a strictly older semantic version; unknown and future states
+`0.2.0-rc.4` set and a strictly older semantic version; unknown and future states
 are not downgraded. A healthy current-version manually activated project can
 adopt only its missing preset decision/snapshot, preserve its activation ID, and
 rebaseline to the exact authorized postimage.
@@ -299,8 +299,9 @@ written first and sanitized later; they are discarded before persistence.
 
 ## Explicit limitations
 
-- Official Codex documentation says `PreToolUse` and `PostToolUse` do not yet
-  intercept every `unified_exec` path or every tool.
+- Codex tool coverage changes by platform version. Check the current official
+  Hook contract and exercise the actual tool paths; July's `unified_exec`
+  limitation is historical evidence, not a current universal platform claim.
 - Multiple matching Hooks can run concurrently; ACGM cannot prevent another Hook
   from starting.
 - A personal Hook can be disabled and is not an enterprise policy boundary.
@@ -329,10 +330,18 @@ written first and sanitized later; they are discarded before persistence.
 
 ## RC acceptance status
 
+The 0.3.0-rc.1 alignment adds advisory `decision-ledger` files, not a second
+runtime ledger. Claims and OPEN_THREADS are not activation-baseline inputs;
+accepted decisions remain baseline inputs. No automatic promotion, transcript
+parsing or SessionEnd ledger reporting is implemented. Startup points to the
+skill. Ambiguous multi-repository roots warn on session/subagent start only;
+other callbacks return an empty result without choosing a project or writing
+state. See [the alignment review](docs/CLAUDE-092-ALIGNMENT.md).
+
 Automated fixtures exercise the one-consent plan/apply contract, conservative
 asset adoption, ambiguous-root fail-closed behavior, and first-observed-Hook
 heartbeat. They do not prove installed-platform behavior. The installed-plugin
-E2E for the `0.2.0-rc.4` candidate—including the platform-owned `/hooks` review
+E2E for the `0.3.0-rc.1` candidate—including the platform-owned `/hooks` review
 flow and real Codex tool events in a completely new task—has not yet been
 recorded as passed. No new automatic-Hook claim is promoted to verified platform
 behavior until that checklist is completed.
