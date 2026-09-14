@@ -109,3 +109,25 @@ Keep handoff files and private plugin state for diagnosis; do not delete user
 records. Existing ACGM remains installed. If necessary compare against the
 private installation backup, but never blindly restore an old whole global
 config over unrelated changes. No automatic Git commit or remote upload occurs.
+
+## Live local panel
+
+Run `python3 scripts/session_dashboard.py --project /exact/project` from this
+checkout and open the printed loopback URL in the Codex browser pane. It refreshes
+every three seconds without another model request. It displays up to 20 recent
+unarchived main tasks for that exact root, excluding subagents/review agents.
+It does not infer which task is foreground; each card names its task. New tasks
+in the same exact folder appear automatically. Other worktrees are separate.
+
+Green/yellow/orange/red follow the Hook budgets, including the dynamic 60K
+buffer. Missing or stale observations are gray, and the last known count is
+labeled as such. The browser receives only bounded titles, IDs and metrics; no
+transcript body, prompt, commands or credentials. The server binds 127.0.0.1,
+requires its random URL path and exact Host, emits no CORS headers or request
+logs, and makes no external requests. It performs no project writes.
+
+This is a checkout-hosted preview, not an embedded native desktop status-line
+extension, and it does not alter trusted Hook bytes. The process must remain
+running; Ctrl-C stops it. There is no login-item/daemon or automatic restart.
+A new run prints a new URL. Live Hook coverage and a new-task effective 500K
+window remain separate acceptance steps from panel rendering.
