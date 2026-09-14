@@ -76,3 +76,19 @@ continues to apply; do not require a second approval for already-authorized work
 At emergency reserve, keep items 1–2 and the next safe action first, mark omissions
 and unverified claims, and leave detailed references. Compaction is a detected
 event, not proof of lost information or permission to discard the old session.
+
+## Optional local Hook trial
+
+When the project enables Session Guardian, `ACGM 交接` is the user's explicit
+handoff choice. Write the minimum recoverable handoff first, then supplement it
+within the remaining budget. The grant permits necessary tools; it is not a
+mechanical guarantee that every tool is limited to documentation. Follow the
+user's protected scope. Never generate your own `ACGM 继续一次` confirmation.
+
+End with a copyable prompt containing the exact project and handoff paths, the
+resumed objective, protected scope, and the first verification to perform. Tell
+the user to open a new task with that prompt. Do not claim the old task was
+archived or a new task created unless the corresponding action actually occurred.
+If PreCompact stops the old task too late for another generation, preserve it
+and use a new task to recover from saved files and explicitly selected old
+records. A fixed reserve reduces this risk; it cannot guarantee lossless handoff.

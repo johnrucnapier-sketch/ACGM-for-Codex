@@ -1,8 +1,9 @@
 # Optional Session Guardian — development prototype
 
 This branch develops a small ACGM add-on, not a new governance system. It is not
-part of the installed or published 0.3.0-rc.1 package. Existing Hooks, private
-event ledger and Codex settings are unchanged. No 500K window has been applied.
+part of the published 0.3.0-rc.1 package. The local trial is built as a separate
+opt-in companion plugin, preserving the stable seven Hooks and private ledger.
+See SESSION-TRIAL.md for installation, project settings, gates and rollback.
 
 ## Findings and selection (2026-09-14)
 
@@ -19,7 +20,7 @@ named resume or latest can itself be stale. Prefer evidence and provenance.
 The supplied Session Guardian proposal is design input, not an execution contract.
 Accepted: early closing, safe operation boundaries, explicit unknown data quality,
 incremental monitoring, no automatic Git mutations, handoff with fresh readback.
-Reduced: Codex only initially, one script and one skill, no provider framework,
+Reduced: Codex only initially, a small reader and Hook policy with one skill, no provider framework,
 daemon, database of our own, universal PROJECT_STATE, desktop UI or duplicate ledger.
 Changed: no universal test/build/repair ritual at closing; no blanket prohibition
 on rechecking old results; compaction is an event, not proof of memory corruption.
@@ -104,7 +105,7 @@ persists; historical example commands do not create new authorization.
 Synthetic tests establish parsing and boundary behavior, not native delivery.
 Live read-only status has been observed on the author's exact active session;
 semantic successor readback, real threshold notification UX, broader CLI version
-support and installation remain separate gates. Do not call this the full
+support and actual native Hook execution remain separate gates. Do not call this the full
 proposal's MVP: no Claude adapter or automatic session switching is implemented.
 Select a new release version and complete the existing manifest-bound release
 and installation flow before distributing it as an installed ACGM upgrade.
