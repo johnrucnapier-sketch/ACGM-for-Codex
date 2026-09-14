@@ -131,3 +131,26 @@ extension, and it does not alter trusted Hook bytes. The process must remain
 running; Ctrl-C stops it. There is no login-item/daemon or automatic restart.
 A new run prints a new URL. Live Hook coverage and a new-task effective 500K
 window remain separate acceptance steps from panel rendering.
+
+## Trial correction: migration and handoff UX
+
+A changed configured window gets at most one explanation-only migration turn
+per raw-window/compaction-limit pair, and only while above the reaction margin.
+All tools are denied in that turn. This permits a new model usage observation
+without executing the pending business request; it does not assert that the
+window has changed. If the mismatch persists, use handoff rather than retrying.
+PostToolUse/Stop do not inject begin-handoff warnings during a granted handoff
+turn. The assistant must still verify files before claiming handoff completion.
+
+Blocked or migration-paused original user requests are retained in the existing
+private plugin state (up to four requests of 2000 characters each, with explicit
+truncation/overflow flags). This is a deliberate privacy change from metrics-only
+state: the text can contain private user material and must never be published.
+It is injected only into that same task's explicitly requested handoff, as quoted
+unexecuted requests. It never grants tool permission, and quoted third-party
+instructions or truncated text do not establish authority. Retention uses the
+plugin data lifecycle; no external service or extra database is added.
+
+Handoffs record timezone-aware creation time, source task ID, and which evidence
+links are temporary. Successors retain prior explicit authorization unless scope
+changes or the user withdraws it. Display tooling stays independent from ACGM.

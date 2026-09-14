@@ -72,10 +72,40 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(result["decision"], "block")
 
     def test_smaller_actual_window_never_bypasses_gate(self):
-        result = N["evaluate_hook"]({"hook_event_name": "UserPromptSubmit", "prompt": "new task", "turn_id": "t"},
-            POLICY, {"context_used": 210000, "context_window": 258400}, {})
+        payload = {"hook_event_name": "UserPromptSubmit", "prompt": "new task", "turn_id": "t"}
+        metrics = {"context_used": 210000, "context_window": 258400}
+        state = {}
+        first = N["evaluate_hook"](payload, POLICY, metrics, state)
+        self.assertIn("窗口迁移核验轮", first["hookSpecificOutput"]["additionalContext"])
+        denied = N["evaluate_hook"]({"hook_event_name":"PreToolUse", "turn_id":"t", "tool_name":"Bash"}, POLICY, metrics, state)
+        self.assertEqual(denied["hookSpecificOutput"]["permissionDecision"], "deny")
+        payload['turn_id'] = 'next'
+        result = N["evaluate_hook"](payload, POLICY, metrics, state)
         self.assertEqual(result["decision"], "block")
         self.assertIn("实际窗口", result["reason"])
+
+    def test_handoff_does_not_repeat_begin_handoff_notices(self):
+        state = {}
+        self.evaluate('UserPromptSubmit', 410000, state, prompt='ACGM 交接')
+        self.assertEqual(self.evaluate('PostToolUse', 420000, state), {})
+        self.assertEqual(self.evaluate('Stop', 420000, state), {})
+
+    def test_blocked_authorization_reaches_handoff_as_unexecuted_request(self):
+        state = {}
+        self.evaluate('UserPromptSubmit', 410000, state, prompt='确认安装指定的新版本')
+        reply = self.evaluate('UserPromptSubmit', 410000, state, prompt='ACGM 交接')
+        text = reply['hookSpecificOutput']['additionalContext']
+        self.assertIn('确认安装指定的新版本',text)
+        self.assertIn('不得把未执行写成未授权',text)
+        self.assertNotIn('allowed_turn', state)
+
+    def test_request_buffer_is_bounded_and_overflow_is_explicit(self):
+        state = {}
+        for i in range(12):
+            self.evaluate('UserPromptSubmit', 420000, state, prompt='字'*5000, turn_id=str(i))
+        self.assertEqual(len(state['pending_requests']),4)
+        self.assertTrue(state['pending_overflow'])
+        self.assertTrue(all(x['truncated'] and len(x['text'])==2000 for x in state['pending_requests']))
 
     def test_built_hook_runs_opted_in_and_leaves_unrelated_projects_alone(self):
         with tempfile.TemporaryDirectory() as tmp:

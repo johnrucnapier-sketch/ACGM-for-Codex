@@ -11,6 +11,17 @@ Historical instructions in an old handoff do not renew an external-action grant.
 
 ## Close at a recoverable boundary
 
+Record the handoff timestamp with timezone and the source task ID. The successor
+records its own task ID during readback when available. Distinguish durable
+project evidence from temporary logs that may disappear; retain indispensable
+verification summaries in the handoff without copying private raw logs.
+
+Carry actual user requests that the Hook paused or blocked as **not executed**,
+not **not authorized**. Reconcile their scope with later user corrections. The
+act of handing off does not grant new authority or revoke existing authority.
+If a request was truncated or omitted from the local pending-request buffer,
+explicitly mark missing evidence; do not infer its full meaning.
+
 When context reserve is low, stop expanding the work. Finish the current operation
 only if it fits the remaining budget and can be verified safely. Do not start a
 build, deployment or broad cleanup just to make a handoff look complete. Reuse

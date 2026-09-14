@@ -26,7 +26,7 @@
     "docs/CLAUDE-092-ALIGNMENT.md": "e4e4014347c591b28367dc9641a717186529147ba5974439cacd2785f0ea1e7a",
     "docs/SESSION-GUARDIAN-HANDOFF.md": "b5799ed6decb878486f462e46c8e02db9c1b8b80a9e58c1efc039455e5141dbf",
     "docs/SESSION-GUARDIAN.md": "fa13e84a97d88f142bbb06a128c78773c64cfabc8538b50f1d844f313705e53b",
-    "docs/SESSION-TRIAL.md": "35355cbc2334cb4ae41e857bd6e973772a28431e94ab834ae346ea4e2d82908e",
+    "docs/SESSION-TRIAL.md": "82cb9e880bd37f74226f971d50e167e2f8bfb53423b272526d5566d46947f43e",
     "hooks/hooks.json": "7c908e6878796d0198a8b6a1cf0a35c5313765430d71b0a48632c9bed0abac2f",
     "pyproject.toml": "0759a9b04ad26fc24ee054ec7c5ea1d1af784d537008324c2c4e473427ba408f",
     "scripts/acgm_codex.py": "5f733bcc0d67299b9cdb253a612b5eaded7acefbf5e87662d1ec1d84e83a007b",
@@ -39,7 +39,7 @@
     "scripts/release_check.py": "59d89a9e863b136dba0df36459045c9be163a0f242d00aeb876bb954d4db9025",
     "scripts/session_dashboard.py": "0b1d285b0b3173f62f177c630dd3b7dead25067ea8e31032183a26f191688087",
     "scripts/session_guardian.py": "6d0e016f9dc83d629248afaeb1967480671d4f2f0fcdc00454464b02a9698732",
-    "scripts/session_hooks.py": "ad50ece0d284f02eae1778398c6ba6a86bf26f9a2e00083c084eda00473d2b6d",
+    "scripts/session_hooks.py": "c553d7f952fe8a8c0117943d3eace6eefd0723f792ec7ed5bfba155927d31a64",
     "skills/activity-report/SKILL.md": "2169a57b26238875bf20b886ef77fd3a0d296395008c5eebc49937418cefb37e",
     "skills/activity-report/agents/openai.yaml": "afccb9da0c85a4c098e327d24b3ea9db391b4aa08f3d54ea33ed04d9fe7695ba",
     "skills/decision-ledger/SKILL.md": "a30345d1879971bf9414b59d0e8d977bdaa9dab621ec4e7769f797575d9c91e4",
@@ -50,7 +50,7 @@
     "skills/governance-bootstrap/agents/openai.yaml": "96f30103e46cff6dd792bb6aca310306a5e55ded52e7c71f6e216a6e80424ebe",
     "skills/session-grounding/SKILL.md": "b6810f4c75ac33fb1f49b4b1907a24475d7473c690abf940a30167983359aa6e",
     "skills/session-grounding/agents/openai.yaml": "89cd18eaa7594283a5d6ff76764ccee71c91bf3fea9b0126cae4214474941a48",
-    "skills/session-handoff/SKILL.md": "9651edc5f1c8db6a207684db7afbfa33d46fe7d368bb2ea0a5f14220e4528570",
+    "skills/session-handoff/SKILL.md": "a115e38ca284e4a25655b9fd43187b6c91697a71df986c7020aa018fd6ac9fef",
     "skills/session-handoff/agents/openai.yaml": "0c45db304d1d455d91fe21a6b96be7d3f3b620fcf3f0279efec36c58b53765dd",
     "skills/session-handoff/assets/HANDOFF.md": "f671bb60d2e210869dd0f81ea066efe1c213b656b2251591e6b2b3dbdbe495bb",
     "skills/truth-first/SKILL.md": "04f7c74d2d76f66cfde46b7926c9c12dcb181b2883c0f7218ef6705c04d4ed68",
@@ -65,7 +65,7 @@
     "tests/test_runtime.py": "12bc6de913159711444f4b8a4129cf97fd4c85a7215f8c1a14e7d3d3fb36784e",
     "tests/test_session_dashboard.py": "e4222e327ebf73f7bc0a54bd5bc4396425089dd79bfdeeae3deb721bace50b84",
     "tests/test_session_guardian.py": "83680e8c0744f9fcd697953c382269f3f01b6b08e6c3f9655e872b89ae2f5d1f",
-    "tests/test_session_hooks.py": "634df56bdcb152ffe8bd0b9f69f258287dc0ce291fca9493faa468e296690515"
+    "tests/test_session_hooks.py": "01defa63259ea47ffda7e8dc46459b86c2abc633ba9c78f81469a08e0ab8e6db"
   },
   "schema_version": 1,
   "version": "0.3.0-rc.1"

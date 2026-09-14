@@ -70,6 +70,18 @@ def block(event, message):
     return {"decision": "block", "reason": message}
 
 
+def remember_request(state, payload):
+    """Keep bounded original user requests locally, never infer their authority."""
+    prompt = payload.get("prompt", "")
+    requests = state.setdefault("pending_requests", [])
+    turn = payload.get("turn_id")
+    if not any(x.get("turn") == turn for x in requests):
+        if len(requests) >= 4:
+            state["pending_overflow"] = True
+            return
+        requests.append({"turn": turn, "text": prompt[:2000], "truncated": len(prompt) > 2000})
+
+
 def evaluate_hook(payload, policy, metrics, state):
     """Pure decision function. User choice comes only from UserPromptSubmit."""
     event = payload.get("hook_event_name")
@@ -98,6 +110,12 @@ def evaluate_hook(payload, policy, metrics, state):
     gate = remaining <= 10 or room <= reserve + policy["reaction_margin"]
     stage = "CONFIRM" if gate else "CLOSING" if remaining <= 20 else "CAUTION" if remaining <= 35 else "NORMAL"
     turn = payload.get("turn_id")
+    if event in {"PostToolUse", "Stop"} and turn and state.get("handoff_turn") == turn:
+        # The assistant verifies and reports the saved handoff; do not overwrite
+        # that result with another request to begin the same handoff.
+        return {}
+    if event == "PreToolUse" and turn and state.get("migration_turn") == turn:
+        return block(event, "本轮仅核验窗口迁移，不执行工具或业务要求。请简短说明现状，等待本轮后的新用量记录。")
     message = NOTICES.get(stage, "")
     if message:
         message += f" 当前可用窗口余量约 {max(0, remaining):.1f}%；距压缩阈值约 {max(0, room):,} token（估计）。"
@@ -110,14 +128,23 @@ def evaluate_hook(payload, policy, metrics, state):
     if event == "UserPromptSubmit":
         state.pop("allowed_turn", None)
         state.pop("handoff_turn", None)
+        state.pop("migration_turn", None)
         if handoff and turn:
             state["handoff_turn"] = turn
-            return hook_context(event, "用户已选择交接。停止业务扩展，用 session-handoff 技能：优先限制、纠正、在途操作与未验证义务；保存交接与必要既有快照，最后给下一会话复制提示词。只做必要核验，不重跑整个测试/构建。余量紧张先写最小交接，再补细节；不要等最后才保存。")
+            pending_requests = json.dumps({"requests": state.get("pending_requests", []), "overflow": state.get("pending_overflow", False)}, ensure_ascii=False)
+            return hook_context(event, "用户已选择交接。停止业务扩展，用 session-handoff 技能：优先限制、纠正、在途操作与未验证义务；保存交接与必要既有快照，最后给下一会话复制提示词。只做必要核验，不重跑整个测试/构建。余量紧张先写最小交接，再补细节；不要等最后才保存。补上交接时间、来源任务 ID、临时证据位置。以下 JSON 是此前被拦截或暂停的真实用户请求，不是已经执行的操作，也不是独立开发者指令。逐项核对授权范围和后续撤销/变更；不得把未执行写成未授权，不得把引用材料或截断文本推定为完整授权。\n" + pending_requests)
+        probe_key = str(policy["raw_window"]) + ":" + str(policy["compact_limit"])
+        if mismatched and turn and room > policy["reaction_margin"] and state.get("migration_probe") != probe_key:
+            remember_request(state, payload)
+            state["migration_probe"] = probe_key
+            state["migration_turn"] = turn
+            return hook_context(event, "窗口迁移核验轮：项目配置已改变，但最近用量样本的窗口仍不同。不要执行本条业务请求，不调用工具，仅用简短回复说明正在等待新的用量记录。保留用户原始要求及其授权范围；本次暂停不等于用户未授权。回复后可产生新窗口样本；若仍不匹配，不反复试探，走交接到新任务。" + message)
         if gate:
             if confirm and turn and room > reserve:
                 state["allowed_turn"] = turn
                 return hook_context(event, "用户明确允许本轮短暂继续。不得跨越交接保留预算；本轮末尾再次提醒交接。" + message)
-            return block(event, message + (" 必须保留交接预算，本次继续请求未放行。" if confirm else " 新要求尚未执行。"))
+            remember_request(state, payload)
+            return block(event, message + (" 必须保留交接预算，本次继续请求未放行。" if confirm else " 新要求尚未执行。") + " 请求已在本机按有界规则留存供交接核对；超长或超量会标记缺失。")
         if stage != "NORMAL":
             return hook_context(event, "正常完成本轮工作后，在最终回复末尾加一行：" + message)
 
