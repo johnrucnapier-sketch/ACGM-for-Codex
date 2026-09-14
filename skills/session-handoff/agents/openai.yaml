@@ -1,0 +1,4 @@
+interface:
+  display_name: "ACGM Session Handoff"
+  short_description: "Preserve verified state and decisions across sessions"
+  default_prompt: "Use $session-handoff to prepare or resume this project's handoff within the current authorized scope."
