@@ -13,7 +13,29 @@ Prefer `acgm-codex`. If unavailable, resolve the absolute directory containing t
 
 ## Verify current state
 
-1. Run:
+Use the initial workflow profile supplied by the current Hook. Without one,
+default to Standard; do not infer capability from a model brand or self-rating.
+For an ambiguous profile or a risk transition, use `acgm-codex policy --project
+<exact-root> --risk <read-only|reversible|service|destructive|unknown> --json`;
+include `--session <exact-id>` when known to include session escalation. This is
+read-only advice, not authorization. Do not call it before every tool.
+
+- **Light:** establish the current root, branch/worktree and relevant changes;
+  reuse evidence already verified in this task while its identity and freshness
+  remain valid. Read applicable rules and decisions, not every historical record.
+  Run doctor when activation/integrity is relevant, uncertain or reported unhealthy.
+- **Standard:** use the checks below at entry/recovery; do not rerun unchanged
+  checks or reload unchanged documents merely to satisfy a sequence.
+- **Strict:** use these checks plus fresh evidence for the operation's exact
+  target, smaller actions and independent postconditions. Service/destructive
+  work requires this floor regardless of the initial profile.
+
+Unknown operation risk needs at least Standard and clarification before external
+mutation. Existing mechanical Gate, permission, evidence and policy-integrity
+requirements apply in all profiles. Guardian is independent; do not toggle it to
+match a profile. Never edit policy or reactivate governance just to reduce checks.
+
+1. Obtain these facts (batch the commands when they are needed):
 
    ```sh
    pwd -P
@@ -25,7 +47,8 @@ Prefer `acgm-codex`. If unavailable, resolve the absolute directory containing t
    ```
 
 2. Confirm the intended project, Git root, branch, and worktree before reading or writing project files. Stop if the cwd is wrong.
-3. Run `acgm-codex doctor <verified-git-root>` through the resolved entry point.
+3. In Standard/Strict, run `acgm-codex doctor <verified-git-root>` through the
+   resolved entry point unless current equivalent evidence is already available.
 4. Read the Constitution and root rules, then follow their governance pointers; inspect the relevant snapshot, ADRs, and existing `.governance/OPEN_THREADS.md` and claims. Open questions and unconfirmed drafts are not accepted decisions. Do not guess paths or assume that the newest timestamp contains the governing decision.
 5. Reconcile claims with current files and Git history. Treat a missing artifact as missing evidence, not permission to invent it.
 
@@ -44,7 +67,9 @@ Treat current code and Git state as current facts. Treat transcripts and memory 
 
 ## Publish the grounding note
 
-State concisely:
+Report material findings and uncertainty concisely. Light does not require a
+separate six-part note when the facts are already established. At recovery or
+when state is ambiguous, cover the relevant items:
 
 1. verified project path, branch, worktree, HEAD, and cleanliness;
 2. latest relevant snapshot and ADR;
@@ -53,7 +78,8 @@ State concisely:
 5. unresolved evidence gaps;
 6. next safe action.
 
-After compaction or handoff, restate this grounding note before continuing. Re-run the checks when repository state may have changed.
+After compaction or handoff, restore the relevant facts before continuing and
+report changes or gaps. Re-run checks when repository state may have changed.
 
 Continue within the user's existing authorization. Grounding does not require a
 new approval ritual; ask only when a material uncertainty changes the authorized

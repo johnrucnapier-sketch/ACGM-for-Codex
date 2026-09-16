@@ -27,6 +27,15 @@ def positive(value):
     return isinstance(value, int) and not isinstance(value, bool) and value > 0
 
 
+def budget_metrics(used, window, policy, pending=0):
+    """One lifecycle budget calculation shared by Hooks and the local panel."""
+    room = min(policy["compact_limit"], window * 90 // 95) - used - pending
+    remaining = (1 - (used + pending) / window) * 100
+    gate = remaining <= 10 or room <= policy["handoff_reserve"] + policy["reaction_margin"]
+    stage = "CONFIRM" if gate else "CLOSING" if remaining <= 20 else "CAUTION" if remaining <= 35 else "NORMAL"
+    return room, remaining, stage
+
+
 def locate(home: Path, thread: str) -> Path:
     """Internal fallback: exact thread lookup, never latest file or guessed cwd."""
     db = home / "state_5.sqlite"
@@ -39,8 +48,9 @@ def locate(home: Path, thread: str) -> Path:
 
 class RolloutReader:
     """Version-bounded fallback. Retains metrics only, never prompt/tool contents."""
-    def __init__(self, thread: str, project: Path):
+    def __init__(self, thread: str, project: Path, observer=None):
         self.thread, self.project = thread, project.resolve()
+        self.observer = observer
         self.identity = None
         self.offset = 0
         self.used = self.window = self.observed_at = None
@@ -55,7 +65,7 @@ class RolloutReader:
             st = os.fstat(handle.fileno())
             identity = (str(path.resolve()), st.st_dev, st.st_ino)
             if identity != self.identity or st.st_size < self.offset:
-                self.__init__(self.thread, self.project)
+                self.__init__(self.thread, self.project, self.observer)
                 raw = handle.readline(MAX_LINE + 1)
                 if len(raw) > MAX_LINE or not raw.endswith(b"\n"):
                     raise ValueError("Missing or oversized session metadata.")
@@ -102,6 +112,8 @@ class RolloutReader:
                     if not isinstance(record, dict):
                         raise ValueError("record is not an object")
                     self.consume(record)
+                    if self.observer is not None:
+                        self.observer(record)
                 except (ValueError, TypeError, AttributeError):
                     self.used = self.observed_at = None
                     self.invalidated = True
@@ -191,9 +203,54 @@ def prepare(root: Path):
     }
 
 
+def native_audit(project, thread, rollout):
+    """Read-only reconciliation; native completions never arm or close a gate."""
+    import acgm_codex as A
+    session_id = A._opaque_readonly("session", thread)
+    events = A._project_events(A._project_root(str(project)))
+    events = [e for e in events if e.get("session_id") == session_id]
+    results = {}
+    def observe(record):
+        data = record.get("payload", {})
+        if record.get("type") != "event_msg" or data.get("type") != "item_completed" or data.get("thread_id") != thread:
+            return
+        item = data.get("item", {})
+        if item.get("type") != "CommandExecution" or not item.get("id"):
+            return
+        call = A._opaque_readonly("call", item["id"])
+        turn = A._opaque_readonly("turn", data.get("turn_id"))
+        command = item.get("command", [])
+        if not isinstance(command, list) or len(command) < 3 or command[-2] not in {"-c", "-lc"}:
+            return
+        operation = A._opaque_readonly("operation", command[-1])
+        matches = [e for e in events if e.get("call_id") == call and e.get("turn_id") == turn and e.get("operation_id") == operation]
+        if not matches:
+            return
+        from urllib.parse import urlparse, unquote
+        cwd = item.get("cwd")
+        if not isinstance(cwd, str):
+            return
+        cwd = unquote(urlparse(cwd).path) if cwd.startswith("file:") else cwd
+        target = A._command_target_id(project, {"cwd":cwd}, command[-1], readonly=True)
+        if any(e.get("target_id") and e.get("target_id") != target for e in matches):
+            return
+        results[(call, turn)] = {"call_id": call, "turn_id": turn,
+            "outcome": A._execution_outcome({"tool_response":item}),
+            "native_status": item.get("status"), "exit_code":item.get("exit_code"),
+            "hook_event_ids":[e["event_id"] for e in matches]}
+    reader = RolloutReader(thread, project, observe)
+    reader.poll(rollout)
+    requests = {(e.get("call_id"),e.get("turn_id")) for e in events if e.get("kind") == "tool-requested"}
+    return {"schema":"acgm-native-audit-v1", "source":"verified-version-rollout-tail",
+        "history_complete":False, "invalidated":reader.invalidated,
+        "results":list(results.values()), "requests_without_native_completion":len(requests-results.keys()),
+        "coverage":"Only matching native completions in the bounded tail; missing, denied before execution, "
+                   "and interrupted requests stay unknown unless independently observed. No authorization or gate evidence."}
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["status", "watch", "handoff", "resume"])
+    parser.add_argument("command", choices=["status", "watch", "handoff", "resume", "audit"])
     parser.add_argument("--project", type=Path, required=True)
     parser.add_argument("--thread", default=os.environ.get("CODEX_THREAD_ID"))
     parser.add_argument("--rollout", type=Path)
@@ -227,6 +284,14 @@ def main(argv=None):
             return 2
     if not args.thread:
         parser.error("An exact --thread or CODEX_THREAD_ID is required; no latest-session guessing")
+    if args.command == "audit":
+        import acgm_codex as A
+        try:
+            print(json.dumps(native_audit(args.project, args.thread, args.rollout or locate(args.codex_home, args.thread))))
+            return 0
+        except (OSError, ValueError, sqlite3.Error, A.RuntimeProblem) as exc:
+            print(json.dumps({"state":"UNKNOWN", "reason":str(exc)}))
+            return 2
     reader = RolloutReader(args.thread, args.project)
     previous = None
     try:

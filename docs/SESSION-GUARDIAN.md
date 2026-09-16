@@ -1,9 +1,16 @@
-# Optional Session Guardian — development prototype
+# Optional Session Guardian — integrated module (unreleased)
 
-This branch develops a small ACGM add-on, not a new governance system. It is not
-part of the published 0.3.0-rc.1 package. The local trial is built as a separate
-opt-in companion plugin, preserving the stable seven Hooks and private ledger.
-See SESSION-TRIAL.md for installation, project settings, gates and rollback.
+Session Guardian is an opt-in module of ACGM for Codex. The integrated Hook
+configuration registers the existing reader and lifecycle policy inside the
+same plugin; no companion installation is needed for a future integrated release.
+Both sources are SHA-256/length verified before execution. Project opt-in and
+the 35% / 20% / buffered confirmation UX remain unchanged.
+
+The published 0.3.0-rc.1 and the owner's existing local companion remain unchanged.
+This checkout is an unreleased review candidate, not a deployment. Do not enable
+both the companion and integrated module for the same project. Migration must
+preserve old pending requests, verify new Hook definitions, and leave native
+Hook trust to the user. See [the hardening report](HARDENING-2026-09-16.md).
 
 ## Findings and selection (2026-09-14)
 
@@ -109,3 +116,26 @@ support and actual native Hook execution remain separate gates. Do not call this
 proposal's MVP: no Claude adapter or automatic session switching is implemented.
 Select a new release version and complete the existing manifest-bound release
 and installation flow before distributing it as an installed ACGM upgrade.
+
+## Integrated build and audit
+
+After editing the core or Guardian sources, run
+`python3 scripts/build_session_trial.py --integrate`, then regenerate the package
+manifest and run `scripts/release_check.py`. This updates this checkout only.
+The old positional trial-builder command remains for reproducing the old trial;
+it is not the recommended distribution path.
+
+`bin/acgm-session audit --project <exact-session-cwd> --thread <id>` reconciles
+local ACGM request IDs with native Codex command completions in the bounded
+transcript tail. It reuses the same version/identity checked reader and existing
+HMAC key in read-only mode. It does not write the ledger, arm a gate, or prove a
+semantic postcondition. Missing records, approval results not exposed in the
+transcript, and tool forms with unverified command identity remain unknown.
+A native sandbox failure must not be labelled a successful mutation merely
+because a PreToolUse or permission request occurred.
+
+The in-chat request preview remains bounded. Complete blocked prompt text is
+now retained in private per-session JSON files, and the handoff context points
+to that directory, including requests beyond the four-preview limit. This is
+not an attachment backup: referenced files remain external dependencies. Keep
+these private files with the old plugin data when migrating; do not publish them.

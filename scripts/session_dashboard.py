@@ -16,11 +16,7 @@ def display_metrics(reader, policy):
     sample['stage'] = 'UNKNOWN'
     if sample['quality'] == 'UNKNOWN':
         return sample
-    remaining = 100 * (1 - used / window)
-    boundary = min(policy['compact_limit'], window * 90 // 95)
-    room = boundary - used
-    stage = ('CONFIRM' if remaining <= 10 or room <= policy['handoff_reserve'] + policy['reaction_margin']
-             else 'CLOSING' if remaining <= 20 else 'CAUTION' if remaining <= 35 else 'NORMAL')
+    room, remaining, stage = G.budget_metrics(used, window, policy)
     sample.update(stage=stage, remaining_percent=round(max(0, remaining), 1),
                   compact_room=max(0, room), configured_raw_window=policy['raw_window'],
                   window_matches=window == policy['raw_window'] * 95 // 100)
@@ -37,7 +33,7 @@ class Monitor:
         if policy.get('enabled') is not True:
             raise ValueError('Project session protection is disabled')
         with sqlite3.connect((self.home / 'state_5.sqlite').resolve().as_uri() + '?mode=ro', uri=True) as db:
-            rows = db.execute("SELECT id, substr(title,1,90), rollout_path FROM threads WHERE cwd=? AND archived=0 AND source IN ('vscode','cli','appServer','app-server') ORDER BY updated_at DESC LIMIT 20", (str(self.project),)).fetchall()
+            rows = db.execute("SELECT id, substr(title,1,90), rollout_path FROM threads WHERE cwd=? AND archived=0 AND source IN ('vscode','cli','exec','appServer','app-server') ORDER BY updated_at DESC LIMIT 20", (str(self.project),)).fetchall()
         result = []
         active = {row[0] for row in rows}
         self.readers = {k:v for k,v in self.readers.items() if k in active}

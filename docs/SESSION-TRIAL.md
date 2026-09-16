@@ -1,4 +1,7 @@
-# ACGM Session Guardian — local trial
+# ACGM Session Guardian — historical local trial
+
+For the unreleased integrated module, see [SESSION-GUARDIAN.md](SESSION-GUARDIAN.md).
+The following records the existing companion trial and its rollback.
 
 This optional module is developed in the ACGM repository and packaged separately
 as `acgm-session-guardian@personal`, version `0.1.0-local.1`. It does not replace

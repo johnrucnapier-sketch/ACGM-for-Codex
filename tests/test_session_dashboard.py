@@ -27,4 +27,20 @@ class DashboardTests(unittest.TestCase):
         r=self.reader(100000);r.compactions=1
         self.assertEqual(display_metrics(r,POLICY)['compactions_in_observed_tail'],1)
 
+    def test_native_exec_tasks_are_visible_without_including_subagents(self):
+        import json,sqlite3,tempfile
+        from session_dashboard import Monitor
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp).resolve();(root/'.acgm').mkdir()
+            (root/'.acgm/session-guardian.json').write_text(json.dumps(POLICY))
+            rollout=root/'rollout.jsonl'
+            rollout.write_text(json.dumps({'type':'session_meta','payload':{'id':'exec-task','cwd':str(root),'cli_version':'0.154.0-alpha.6.2'}})+'\n')
+            with sqlite3.connect(root/'state_5.sqlite') as db:
+                db.execute('create table threads (id text,title text,rollout_path text,cwd text,archived int,source text,updated_at int)')
+                for source,thread in [('exec','exec-task'),('subagent','child')]:
+                    db.execute('insert into threads values (?,?,?,?,?,?,?)',(thread,thread,str(rollout),str(root),0,source,1))
+            result=Monitor(root,root).snapshot()
+            self.assertEqual([t['id'] for t in result['tasks']],['exec-task'])
+            self.assertEqual(result['tasks'][0]['stage'],'UNKNOWN')
+
 if __name__=='__main__':unittest.main()

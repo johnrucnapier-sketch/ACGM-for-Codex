@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased — bounded hardening, Session Guardian and workflow profiles
+
+- Add a thin Light/Standard/Strict workflow resolver, baseline-protected optional
+  project choice and session-scoped fixed-check failure escalation. Preserve all
+  mechanical Gate requirements and independent Guardian behavior.
+- Reduce repeated grounding and routine gate-card guidance for ordinary work.
+- Fail closed on broken/drifted policy and pre-tool runtime/integrity errors.
+- Bind retry arms to the complete command, and inspect compound shell segments.
+- Separate requests/results, preserve unknown outcomes, and reconcile native
+  completions with the existing exact-session reader. Claimed verification no
+  longer substitutes for the fixed check.
+- Integrate the existing optional Guardian without changing thresholds or UX;
+  fix nested request-state persistence and preserve full blocked prompt text.
+- Share Hook/dashboard budget calculation; add regression and native fixture tests.
+- Include Guardian runtime, dashboard and handoff assets in the development
+  snapshot allowlist; verify the copied hash-bound Guardian loader.
+
+No new release version or installed-runtime migration is performed here.
+
+
 ## 0.3.0-rc.1 — 2026-09-12 release candidate
 
 - Adapt the decision-ledger workflow from ACGM for Claude Code 0.9.2: preserve

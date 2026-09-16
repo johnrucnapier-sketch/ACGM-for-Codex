@@ -57,6 +57,20 @@ QUICKSTART_MANAGED_DIRECTORIES = (
     ".governance/snapshots",
 )
 GATE_TTL_SECONDS = 180
+WORKFLOW_POLICY_PATH = ".governance/decisions/acgm-policy.json"
+GOVERNANCE_PROFILES = ("light", "standard", "strict")
+CAPABILITY_PROFILES = {"high-autonomy": "light", "general": "standard",
+                       "limited": "strict", "unknown": "standard"}
+RISK_FLOORS = {"read-only": "light", "reversible": "light", "unknown": "standard",
+               "service": "strict", "destructive": "strict"}
+PROFILE_GUIDANCE = {
+    "light": "Reuse still-valid grounding evidence; inspect changed facts and relevant rules. "
+             "Use targeted verification and report only material findings; no routine gate card.",
+    "standard": "Verify the current project and relevant decisions, use targeted verification "
+                "and summarize meaningful checkpoints. Avoid repeating unchanged checks.",
+    "strict": "Use smaller bounded actions, fresh target evidence and independent postconditions. "
+              "Diagnose repeated check failures before retrying; more ceremony is not evidence.",
+}
 MAX_WORKSPACE_ENTRIES = 128
 MAX_DIRECT_REPOSITORIES = 16
 
@@ -98,6 +112,7 @@ HOOK_NAMES = {
     "post-tool": "PostToolUse",
     "pre-compact": "PreCompact",
     "stop": "Stop",
+    "interrupt": "Interrupt",
 }
 
 _PENDING_TOKEN = "TO" + "DO"
@@ -1101,6 +1116,12 @@ def _project_status(root: Path) -> dict[str, Any]:
                 drift.append(marker)
     result["drift"] = drift
     result["state"] = DRIFTED if drift else GOVERNED
+    if result["state"] == GOVERNED:
+        try:
+            _workflow_settings(root)
+        except RuntimeProblem:
+            result["state"] = BROKEN
+            result["drift"] = ["workflow-policy-invalid"]
     return result
 
 
@@ -1246,6 +1267,8 @@ def _event_value(
     state: Optional[str] = None,
     ref_id: Optional[str] = None,
     target_id: Optional[str] = None,
+    operation_id: Optional[str] = None,
+    call_id: Optional[str] = None,
 ) -> dict[str, Any]:
     event: dict[str, Any] = {
         "schema": LEDGER_SCHEMA,
@@ -1262,6 +1285,10 @@ def _event_value(
     }
     if ref_id:
         event["ref_id"] = ref_id
+    if operation_id:
+        event["operation_id"] = operation_id
+    if call_id:
+        event["call_id"] = call_id
     if target_id:
         event["target_id"] = target_id
     try:
@@ -1306,6 +1333,8 @@ def _append_event(
     state: Optional[str] = None,
     ref_id: Optional[str] = None,
     target_id: Optional[str] = None,
+    operation_id: Optional[str] = None,
+    call_id: Optional[str] = None,
 ) -> dict[str, Any]:
     event = _event_value(
         kind,
@@ -1317,6 +1346,8 @@ def _append_event(
         state=state,
         ref_id=ref_id,
         target_id=target_id,
+        operation_id=operation_id,
+        call_id=call_id,
     )
     path = _ledger_path()
     descriptor = os.open(path, os.O_RDWR | os.O_APPEND | os.O_CREAT, 0o600)
@@ -1478,28 +1509,35 @@ def _risk_category(command: str) -> Optional[str]:
                     or "--force-with-lease" in options
                 ):
                     return "git-force-push"
+    if not tokens:
+        for segment in _shell_segments(command) or []:
+            literal = shlex.join(segment)
+            if _tokens_if_independent(literal):
+                category = _risk_category(literal)
+                if category:
+                    return category
     patterns = (
-        (r"(?:^|[;&|]\s*|\s)(?:\S*/)?git(?:\s+-C\s+\S+)?\s+reset\s+--hard(?:\s|$)", "git-reset-hard"),
+        (r"(?:^|[;&|(]\s*|\s)(?:\S*/)?git(?:\s+-C\s+\S+)?\s+reset\s+--hard(?:\s|$)", "git-reset-hard"),
         (
-            r"(?:^|[;&|]\s*|\s)(?:\S*/)?git(?:\s+-C\s+\S+)?\s+clean\s+"
+            r"(?:^|[;&|(]\s*|\s)(?:\S*/)?git(?:\s+-C\s+\S+)?\s+clean\s+"
             r"(?=[^\n]*(?:-[A-Za-z]*f|--force\b))"
             r"(?=[^\n]*(?:-[A-Za-z]*d|--directories\b))",
             "git-clean-force",
         ),
         (
-            r"(?:^|[;&|]\s*|\s)(?:\S*/)?git(?:\s+-C\s+\S+)?\s+branch\s+"
+            r"(?:^|[;&|(]\s*|\s)(?:\S*/)?git(?:\s+-C\s+\S+)?\s+branch\s+"
             r"(?:-D\b|(?=[^\n]*--delete\b)(?=[^\n]*--force\b))",
             "git-branch-delete",
         ),
         (
-            r"(?:^|[;&|]\s*|\s)(?:\S*/)?git(?:\s+-C\s+\S+)?\s+push\b[^\n]*"
+            r"(?:^|[;&|(]\s*|\s)(?:\S*/)?git(?:\s+-C\s+\S+)?\s+push\b[^\n]*"
             r"(?:--force(?:-with-lease(?:=\S+)?)?(?=\s|$)|(?:^|\s)-f(?:\s|$))",
             "git-force-push",
         ),
-        (r"(?:^|[;&|]\s*|\s)(?:\S*/)?rm\s+(?:-[A-Za-z]*r[A-Za-z]*f|-[A-Za-z]*f[A-Za-z]*r)(?:\s|$)", "recursive-delete"),
-        (r"(?:^|[;&|]\s*|\s)(?:\S*/)?rm\s+(?=[^\n]*--recursive\b)(?=[^\n]*--force\b)", "recursive-delete"),
-        (r"(?:^|[;&|]\s*|\s)(?:\S*/)?rm\s+-r\s+-f(?:\s|$)", "recursive-delete"),
-        (r"(?:^|[;&|]\s*|\s)(?:\S*/)?rm\s+-f\s+-r(?:\s|$)", "recursive-delete"),
+        (r"(?:^|[;&|(]\s*|\s)(?:\S*/)?rm\s+(?:-[A-Za-z]*r[A-Za-z]*f|-[A-Za-z]*f[A-Za-z]*r)(?:\s|$)", "recursive-delete"),
+        (r"(?:^|[;&|(]\s*|\s)(?:\S*/)?rm\s+(?=[^\n]*--recursive\b)(?=[^\n]*--force\b)", "recursive-delete"),
+        (r"(?:^|[;&|(]\s*|\s)(?:\S*/)?rm\s+-r\s+-f(?:\s|$)", "recursive-delete"),
+        (r"(?:^|[;&|(]\s*|\s)(?:\S*/)?rm\s+-f\s+-r(?:\s|$)", "recursive-delete"),
     )
     for pattern_text, category in patterns:
         if re.search(pattern_text, command, re.IGNORECASE):
@@ -1821,7 +1859,7 @@ def _payload_cwd(root: Path, payload: dict[str, Any]) -> Path:
 
 
 def _command_target_id(
-    root: Path, payload: dict[str, Any], command: str
+    root: Path, payload: dict[str, Any], command: str, *, readonly: bool = False
 ) -> Optional[str]:
     """Return a privacy-preserving target binding for simple standalone commands.
 
@@ -1888,7 +1926,7 @@ def _command_target_id(
             target = (cwd / path).resolve() if not path.is_absolute() else path.resolve()
     elif executable != "pwd":
         return None
-    return _opaque("target", str(target))
+    return (_opaque_readonly if readonly else _opaque)("target", str(target))
 
 
 def _gate_request(command: str, operation: str) -> Optional[dict[str, str]]:
@@ -1957,6 +1995,8 @@ def _consume_active_arm(
         outcome="allowed-retry",
         state=GOVERNED,
         target_id=target_id,
+        operation_id=_opaque("operation", _command_from(payload)),
+        call_id=_opaque("call", payload.get("tool_use_id")),
     )
     path = _ledger_path()
     descriptor = os.open(path, os.O_RDWR | os.O_APPEND | os.O_CREAT, 0o600)
@@ -1970,6 +2010,7 @@ def _consume_active_arm(
             and event.get("session_id") == session_id
             and event.get("turn_id") == turn_id
             and event.get("kind") == "gate-denied"
+            and event.get("operation_id") == _opaque("operation", _command_from(payload))
             and event.get("category") == category
             and event.get("target_id") == target_id
         ]
@@ -2013,8 +2054,9 @@ def _open_obligations(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     closed_refs = {
         event.get("ref_id")
         for event in events
-        if event.get("kind")
-        in {"obligation-check-observed", "obligation-unresolved", "event-resolution"}
+        if event.get("kind") in {"obligation-check-observed", "obligation-unresolved"}
+        or (event.get("kind") == "event-resolution"
+            and event.get("outcome") in {"human_override", "false_positive"})
     }
     return [event for event in opened if event.get("event_id") not in closed_refs]
 
@@ -2053,6 +2095,113 @@ def _deny_pretool(reason: str) -> dict[str, Any]:
     }
 
 
+def _workflow_settings(root: Path) -> dict[str, str]:
+    # An optional accepted decision uses the existing activation baseline, not a
+    # second mutable policy store. Absence preserves Standard for existing users.
+    path = root / WORKFLOW_POLICY_PATH
+    if not path.exists() and not path.is_symlink():
+        return {"capability": "unknown", "profile": "auto"}
+    if any(p.is_symlink() for p in (path, path.parent, path.parent.parent)):
+        raise RuntimeProblem("workflow policy must not use symlinks")
+    try:
+        if not path.is_file() or path.stat().st_size > 8192:
+            raise RuntimeProblem("workflow policy must be a small regular JSON file")
+        value = _safe_read_json(path)
+        if (set(value) != {"schema", "capability", "profile"}
+                or value["schema"] != "acgm-workflow-policy-v1"
+                or value["capability"] not in CAPABILITY_PROFILES
+                or value["profile"] not in ("auto", *GOVERNANCE_PROFILES)):
+            raise RuntimeProblem("invalid workflow policy")
+    except (OSError, TypeError) as exc:
+        raise RuntimeProblem("invalid workflow policy") from exc
+    return value
+
+
+def _workflow_escalated(events: list[dict[str, Any]], session_id: str) -> bool:
+    sources = {e["event_id"]: e for e in events}
+    streaks: dict[tuple[str, str], int] = {}
+    for event in events:
+        if event.get("kind") == "policy-escalated" and event.get("session_id") == session_id:
+            return True
+        # Fixed checks run in a separate CLI process. Follow their source event
+        # rather than attributing the CLI's absent session to every task.
+        source = sources.get(event.get("ref_id"), {})
+        if (source.get("session_id") != session_id
+                or source.get("kind") not in {"gate-denied", "obligation-opened"}
+                or source.get("activation_id") != event.get("activation_id")
+                or source.get("target_id") != event.get("target_id")
+                or source.get("category") != event.get("category")):
+            continue
+        key = (str(source.get("target_id")), str(source.get("category")))
+        kind = event.get("kind")
+        if kind in {"state-check-failed", "obligation-check-failed"}:
+            streaks[key] = streaks.get(key, 0) + 1
+            if streaks[key] >= 2:
+                return True  # Latched even if a later check succeeds.
+        elif kind in {"state-check-observed", "obligation-check-observed"}:
+            streaks[key] = 0
+    return False
+
+
+def _workflow_policy(root: Path, *, risk: str = "unknown", requested: str = "auto",
+                     session: Optional[str] = None,
+                     events: Optional[list[dict[str, Any]]] = None) -> dict[str, Any]:
+    settings = _workflow_settings(root)
+    candidates = {"capability": CAPABILITY_PROFILES[settings["capability"]],
+                  "operation-risk": RISK_FLOORS[risk]}
+    if settings["profile"] != "auto":
+        candidates["project"] = settings["profile"]
+    if requested != "auto":
+        candidates["requested"] = requested
+    history = events if events is not None else _project_events(root)
+    session_id = _opaque_readonly("session", session) if session and history else None
+    escalated = bool(session_id and _workflow_escalated(history, session_id))
+    if escalated:
+        candidates["session-escalation"] = "strict"
+    profile = max(candidates.values(), key=GOVERNANCE_PROFILES.index)
+    return {"schema": "acgm-workflow-resolution-v1", "profile": profile,
+            "capability": settings["capability"], "risk": risk, "reasons": candidates,
+            "escalated": escalated, "guidance": PROFILE_GUIDANCE[profile],
+            "hard_core": "unchanged", "guardian": "independent",
+            "scope": "workflow guidance only; not authorization or a general risk classifier"}
+
+
+def _cmd_policy(args: argparse.Namespace) -> int:
+    root = _project_root(_project_argument(args))
+    status = _project_status(root)
+    if status["state"] in {DRIFTED, BROKEN}:
+        raise RuntimeProblem("repair governance drift before resolving workflow policy")
+    value = _workflow_policy(root, risk=args.risk, requested=args.profile, session=args.session)
+    value["project_state"] = status["state"]
+    value["active"] = status["state"] == GOVERNED
+    if args.json:
+        _json_output(value)
+    else:
+        print(f"ACGM workflow: {value['profile']} ({status['state']}); Guardian independent.")
+        print(value["guidance"])
+        print(value["scope"])
+    return 0
+
+
+def _hook_workflow_notice(root: Path, payload: dict[str, Any], result: dict[str, Any]) -> None:
+    session = payload.get("session_id")
+    if not isinstance(session, str) or not session:
+        return
+    events = _project_events(root)
+    if not events:
+        return
+    session_id = _opaque_readonly("session", session)
+    if (not _workflow_escalated(events, session_id)
+            or any(e.get("kind") == "policy-escalated" and e.get("session_id") == session_id
+                   for e in events)):
+        return
+    _append_event("policy-escalated", root, session, payload.get("turn_id"),
+                  category="workflow", outcome="strict-after-repeated-fixed-check-failure")
+    result["systemMessage"] = (result.get("systemMessage", "") +
+        " ACGM workflow escalated to strict for this session. " + PROFILE_GUIDANCE["strict"] +
+        " This grants no retry permission and does not change Guardian or existing denials.")
+
+
 def _hook_session_like(
     dispatch: str, root: Path, payload: dict[str, Any], status: dict[str, Any]
 ) -> dict[str, Any]:
@@ -2066,10 +2215,14 @@ def _hook_session_like(
         else ""
     )
     if status["state"] == GOVERNED:
+        policy = _workflow_policy(root, risk="read-only", session=payload.get("session_id"))
         return _hook_context(
             official,
             "ACGM observed this Hook; project governance files match the activation baseline. "
-            "Use session-grounding to verify current code, Git state, and open decisions. "
+            f"Initial workflow profile: {policy['profile']}. {policy['guidance']} "
+            "Apply the service/destructive Strict floor before such operations; unknown risk "
+            "requires at least Standard and clarification before external mutation. "
+            "Use session-grounding as needed; all existing Gate requirements remain mandatory. "
             "Use decision-ledger for material decision threads; draft without interrupting work. "
             "This event does not prove that other Hooks ran."
             + root_note
@@ -2117,9 +2270,18 @@ def _hook_pretool(root: Path, payload: dict[str, Any], status: dict[str, Any]) -
             "for explicit human review instead."
         )
 
+    if status["state"] in {BROKEN, DRIFTED}:
+        _append_event("policy-unavailable-denied", root, session, turn,
+                      outcome="denied", state=status["state"])
+        return _deny_pretool("ACGM policy is unreadable or drifted; inspect it with "
+                             "acgm-codex doctor before continuing this governed project.")
     if status["state"] != GOVERNED:
         return {}
 
+    _append_event("tool-requested", root, session, turn, outcome="requested",
+                  call_id=_opaque("call", payload.get("tool_use_id")),
+                  operation_id=_opaque("operation", command),
+                  target_id=_command_target_id(root, payload, command))
     if tool_name != "Bash":
         return {}
 
@@ -2231,6 +2393,8 @@ def _hook_pretool(root: Path, payload: dict[str, Any], status: dict[str, Any]) -
         outcome="denied",
         state=GOVERNED,
         target_id=target_id,
+        operation_id=_opaque("operation", command),
+        call_id=_opaque("call", payload.get("tool_use_id")),
     )
     if target_id is None:
         return _deny_pretool(
@@ -2247,10 +2411,34 @@ def _hook_pretool(root: Path, payload: dict[str, Any], status: dict[str, Any]) -
     )
 
 
+def _execution_outcome(payload: dict[str, Any]) -> str:
+    """Only structured execution facts establish success; arbitrary text cannot."""
+    response = payload.get("tool_response")
+    if not isinstance(response, dict):
+        return "unknown"
+    status = response.get("status")
+    if status in {"declined", "approval_denied", "sandbox_blocked", "interrupted"}:
+        return {"declined": "approval-denied", "approval_denied": "approval-denied",
+                "sandbox_blocked": "sandbox-blocked", "interrupted": "interrupted"}[status]
+    code = response.get("exit_code", response.get("exitCode"))
+    if isinstance(code, int) and not isinstance(code, bool):
+        return "execution-succeeded" if code == 0 else "execution-failed"
+    if response.get("session_id") is not None or status == "inProgress":
+        return "running"
+    return "unknown"
+
+
 def _hook_posttool(root: Path, payload: dict[str, Any], status: dict[str, Any]) -> dict[str, Any]:
-    if status["state"] != GOVERNED or payload.get("tool_name") != "Bash":
+    if status["state"] != GOVERNED:
         return {}
+    outcome = _execution_outcome(payload)
     command = _command_from(payload)
+    _append_event("tool-result-observed", root, payload.get("session_id"), payload.get("turn_id"),
+                  outcome=outcome, call_id=_opaque("call", payload.get("tool_use_id")),
+                  operation_id=_opaque("operation", command),
+                  target_id=_command_target_id(root, payload, command))
+    if payload.get("tool_name") != "Bash" or outcome in {"approval-denied", "sandbox-blocked", "running"}:
+        return {}
     session = payload.get("session_id")
     turn = payload.get("turn_id")
     events = _scoped_events(root, payload)
@@ -2261,6 +2449,8 @@ def _hook_posttool(root: Path, payload: dict[str, Any], status: dict[str, Any]) 
         for index, event in enumerate(events):
             if (
                 event.get("kind") == "gate-consumed"
+                and event.get("operation_id") == _opaque("operation", command)
+                and event.get("call_id") == _opaque("call", payload.get("tool_use_id"))
                 and event.get("category") == category
                 and event.get("target_id") == target_id
             ):
@@ -2374,15 +2564,13 @@ def _run_hook(dispatch: str, project: Optional[str]) -> int:
                 "runtime-error",
                 root,
                 category=dispatch,
-                outcome="fail-open",
+                outcome="fail-closed" if dispatch == "pre-tool" else "unavailable",
             )
         except Exception:
             pass
         _json_output(
-            {
-                "systemMessage": "ACGM Codex received invalid hook input and failed "
-                "open; enforcement was not applied."
-            }
+            _deny_pretool("ACGM hook input is invalid; execution is paused.")
+            if dispatch == "pre-tool" else {"systemMessage": "ACGM hook input is invalid; observation unavailable."}
         )
         return 0
     try:
@@ -2416,8 +2604,16 @@ def _run_hook(dispatch: str, project: Optional[str]) -> int:
             result = _hook_session_like(dispatch, root, payload, status)
         elif dispatch == "pre-tool":
             result = _hook_pretool(root, payload, status)
+            if status["state"] == GOVERNED:
+                if payload.get("tool_name") == "Bash" and _risk_category(_command_from(payload)):
+                    result["systemMessage"] = (result.get("systemMessage", "") +
+                        " ACGM operation floor: strict. Existing Gate and authorization requirements apply.")
         elif dispatch == "post-tool":
             result = _hook_posttool(root, payload, status)
+            command = _command_from(payload)
+            if (status["state"] == GOVERNED and payload.get("tool_name") == "Bash"
+                    and (_gate_request(command, "arm") or _gate_request(command, "verify"))):
+                _hook_workflow_notice(root, payload, result)
         elif dispatch == "permission-request":
             result = _hook_permission(root, payload, status)
         elif dispatch == "pre-compact":
@@ -2425,6 +2621,10 @@ def _run_hook(dispatch: str, project: Optional[str]) -> int:
                 "systemMessage": "ACGM recorded the pre-compaction heartbeat. Re-ground "
                 "from current project files after compaction."
             } if status["state"] == GOVERNED else {}
+        elif dispatch == "interrupt":
+            _append_event("session-interrupted", root, payload.get("session_id"),
+                          payload.get("turn_id"), outcome="interrupted")
+            result = {}
         elif dispatch == "stop":
             result = _hook_stop(root, payload, status)
         else:
@@ -2462,15 +2662,13 @@ def _run_hook(dispatch: str, project: Optional[str]) -> int:
                 payload.get("session_id"),
                 payload.get("turn_id"),
                 category=dispatch,
-                outcome="fail-open",
+                outcome="fail-closed" if dispatch == "pre-tool" else "unavailable",
             )
         except Exception:
             pass
         _json_output(
-            {
-                "systemMessage": "ACGM Codex encountered an internal error and failed "
-                "open; enforcement was not applied. Run `acgm-codex doctor`."
-            }
+            _deny_pretool("ACGM encountered an internal error; execution is paused. Run acgm-codex doctor.")
+            if dispatch == "pre-tool" else {"systemMessage": "ACGM observation unavailable; run acgm-codex doctor."}
         )
         return 0
 
@@ -4192,6 +4390,8 @@ def _cmd_report(args: argparse.Namespace) -> int:
         "project_state": _project_status(root)["state"],
         "count": len(events),
         "events": events,
+        "coverage": "Hook observations only; a request or allowed retry is not execution. "
+                    "Missing results remain unknown; native approval outcomes require native telemetry.",
     }
     if args.json:
         _json_output(value)
@@ -4542,6 +4742,14 @@ def _build_parser() -> argparse.ArgumentParser:
     doctor.add_argument("--json", action="store_true", help="emit machine-readable JSON")
     doctor.add_argument("--strict", action="store_true", help="exit non-zero unless fully healthy")
 
+    policy = subparsers.add_parser("policy", help="explain workflow profile without changing policy")
+    policy.add_argument("--project", help="project directory")
+    policy.add_argument("--risk", choices=tuple(RISK_FLOORS), default="unknown")
+    policy.add_argument("--profile", choices=("auto", *GOVERNANCE_PROFILES), default="auto",
+                        help="raise this recommendation; never lower project, capability or risk floors")
+    policy.add_argument("--session", help="exact session id for existing escalation evidence")
+    policy.add_argument("--json", action="store_true")
+
     report = subparsers.add_parser("report", help="show the privacy-minimized activity ledger")
     report.add_argument(
         "--project",
@@ -4599,6 +4807,8 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             return _cmd_quickstart(args)
         if args.command == "doctor":
             return _cmd_doctor(args)
+        if args.command == "policy":
+            return _cmd_policy(args)
         if args.command == "report":
             return _cmd_report(args)
         if args.command == "export-case":

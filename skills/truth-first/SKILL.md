@@ -13,7 +13,18 @@ Prefer `acgm-codex`. If unavailable, resolve the absolute directory containing t
 
 ## Build the gate card
 
-Before mutation, write down all four items:
+Service operations and destructive changes have a Strict workflow floor,
+independent of model capability. All existing mechanical Gate requirements below
+remain mandatory in every profile. A profile never grants authorization, weakens
+native permissions, or proves an action safe. Unknown targets, LOCAL/REMOTE
+conflicts and ambiguous authority require resolution before execution, not just
+a stronger profile. Guardian remains an independent lifecycle choice.
+
+For ordinary reversible work, retain the same target/evidence/verification
+principles without requiring a separate gate card or repeated approval. Reuse
+current evidence and existing authorization when they cover the exact action.
+For high-risk or materially state-sensitive work, make these four items explicit
+(reuse an existing still-valid card rather than repeating it):
 
 1. **Target:** identify the exact repository, worktree, branch, file, resource, account, or environment and the intended action.
 2. **Current state:** collect fresh, read-only evidence at the source of truth. Include timestamps or revisions when state can drift.

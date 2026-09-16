@@ -4,6 +4,15 @@ ACGM for Codex is an adapter, not a textual port of the Claude Code plugin. It
 retains the ACGM governance invariants while using Codex-native plugin, skill,
 Hook, tool, trust, and data contracts.
 
+## Workflow policy boundary
+
+The bounded [workflow profiles](docs/WORKFLOW-PROFILES.md) resolver lives in the
+existing runtime. Light/Standard/Strict adjust guidance; every existing mechanical
+Gate and evidence invariant remains mandatory. An optional accepted policy decision
+uses the existing governance baseline. Repeated fixed-check failures can latch
+Strict for their session using existing events. Guardian remains independent.
+This is not a general risk classifier or an installed-runtime acceptance claim.
+
 ## Runtime flow
 
 1. A direct request to install and enable official ACGM in one exact project
@@ -345,3 +354,19 @@ E2E for the `0.3.0-rc.1` candidate—including the platform-owned `/hooks` revie
 flow and real Codex tool events in a completely new task—has not yet been
 recorded as passed. No new automatic-Hook claim is promoted to verified platform
 behavior until that checklist is completed.
+
+
+## Unreleased Session Guardian integration and execution audit
+
+The optional lifecycle module now registers in the existing plugin Hook file.
+It executes the same reader and policy sources after byte verification and
+continues to use an explicit per-project policy. It adds no provider framework,
+database, background model loop, or replacement sandbox/approval mechanism.
+The core retains its stable single-file runtime. The panel and Hooks share the
+budget calculation; native execution audit reuses the bounded rollout reader.
+
+The Hook ledger records requests separately from observed results. Plain Bash
+output is unknown, not success. A read-only native reconciliation command binds
+completion by thread, turn, call ID, command, and supported target identity;
+it does not automatically discharge postcondition obligations. See the dated
+hardening report for tested coverage and remaining native visibility limits.

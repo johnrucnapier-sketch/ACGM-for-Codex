@@ -2,6 +2,10 @@
 
 **Drift control for long-horizon agent coding.**
 
+The development candidate adds [workflow profiles](docs/WORKFLOW-PROFILES.md):
+Light / Standard / Strict tune grounding and guidance while preserving every existing
+Gate. Guardian remains independent. This is not a released or installed upgrade.
+
 ACGM for Codex is an independent Codex adapter for Agent Coding Governance
 Methodology. It turns implementation, cognitive, structural-placement, and scope
 drift into visible project health, narrow deterministic guardrails, and a
@@ -273,3 +277,7 @@ Run the platform checklist in
 
 Mechanical code is MIT licensed; methodology prose and skill bodies are
 CC-BY-4.0. See [LICENSING.md](LICENSING.md).
+
+## Optional Session Guardian (unreleased)
+
+This development branch registers the existing Session Guardian in the ACGM plugin, disabled unless a project opts in. It preserves the 35%/20% notices, buffered handoff gate, and one-turn continuation. Dashboard polling makes no model requests. Installation and migration from the local companion remain subject to review. See the [module guide](docs/SESSION-GUARDIAN.md) and [hardening report](docs/HARDENING-2026-09-16.md).

@@ -25,7 +25,8 @@
       "Long-horizon drift control",
       "Local governance audit",
       "Session grounding",
-      "Privacy-minimized activity reporting"
+      "Privacy-minimized activity reporting",
+      "Optional Session Guardian"
     ],
     "defaultPrompt": "Audit this Codex project for governance readiness and explain the next safe action."
   }

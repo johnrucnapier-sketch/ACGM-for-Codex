@@ -1,5 +1,8 @@
 # ACGM for Codex
 
+开发候选新增 [Light / Standard / Strict 工作流档位](docs/WORKFLOW-PROFILES.md)：
+调节恢复与提示负担，保留全部现有 Gate；Guardian 独立。尚未发布或升级已安装插件。
+
 **让长周期 Agent 编码不再悄悄漂移。**
 
 ACGM for Codex 是 ACGM（Agent Coding Governance Methodology）的独立 Codex
@@ -229,3 +232,7 @@ python3 scripts/release_check.py
 
 机械代码使用 MIT；方法论文档和 skill 正文使用 CC-BY-4.0。详见
 [LICENSING.md](LICENSING.md)。
+
+## 可选 Session Guardian（尚未发布）
+
+当前开发分支已把经过本机试用的 Session Guardian 注册到同一个 ACGM 插件，默认按项目关闭。保留 35%／20% 提醒、带交接余量的确认门与“继续一次”；不会额外调用模型刷新状态。正式安装与现有 companion 的迁移仍需审核。见 [模块说明](docs/SESSION-GUARDIAN.md) 和 [本轮审计报告](docs/HARDENING-2026-09-16.md)。

@@ -2313,7 +2313,7 @@ runpy.run_path(runtime, run_name="__main__")
         self.assertEqual(report.returncode, 2)
         self.assertIn("invalid JSON", report.stderr)
 
-    def test_invalid_hook_json_fails_open_but_records_error(self) -> None:
+    def test_invalid_hook_json_denies_and_records_error(self) -> None:
         result = subprocess.run(
             [sys.executable, str(RUNTIME), "hook", "pre-tool"],
             cwd=str(self.project),
@@ -2325,7 +2325,7 @@ runpy.run_path(runtime, run_name="__main__")
         )
         self.assertEqual(result.returncode, 0)
         output = json.loads(result.stdout)
-        self.assertIn("failed open", output["systemMessage"])
+        self.assertEqual(output["hookSpecificOutput"]["permissionDecision"], "deny")
         self.assertIn("runtime-error", self.event_kinds())
 
     def test_export_never_overwrites_existing_or_governance_state(self) -> None:
