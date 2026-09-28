@@ -29,8 +29,8 @@ PLUGIN_NAME = "acgm-codex"
 MARKETPLACE_NAME = "acgm-codex"
 PLUGIN_ID = f"{PLUGIN_NAME}@{MARKETPLACE_NAME}"
 LEGACY_PLUGIN_ID = f"{PLUGIN_NAME}@personal"
-VERSION = "0.4.0-rc.1"
-TAG = "v0.4.0-rc.1"
+VERSION = "0.4.0-rc.2"
+TAG = "v0.4.0-rc.2"
 REPOSITORY = "johnrucnapier-sketch/ACGM-for-Codex"
 REPOSITORY_URL = "https://github.com/johnrucnapier-sketch/ACGM-for-Codex.git"
 SOURCE_ROOT = Path(__file__).resolve().parents[1]
@@ -60,6 +60,7 @@ KNOWN_OFFICIAL_UPGRADE_VERSIONS = frozenset(
         "0.2.0-rc.3",
         "0.2.0-rc.4",
         "0.3.0-rc.1",
+        "0.4.0-rc.1",
     }
 )
 KNOWN_OFFICIAL_RELEASES = {
@@ -98,6 +99,11 @@ KNOWN_OFFICIAL_RELEASES = {
         "revision": "e2a951956c0d61ae91cfef51712c0b585cee3a8b",
         "manifest_sha256": "d12ecca80f22a609e323950bcab90cd18eaa7e130caef8bf6fc745072c6a7f86",
         "runtime_sha256": "5f733bcc0d67299b9cdb253a612b5eaded7acefbf5e87662d1ec1d84e83a007b",
+    },
+    "0.4.0-rc.1": {
+        "revision": "f8389beb0340b5a235d7503abf30131323f6ce30",
+        "manifest_sha256": "baadb21be37fd69893ce7e1041046668408d4ec54852ee4402800856133b04fe",
+        "runtime_sha256": "5ca58ded6cb39292a2761c18fe1180dd4bc51ccd28260ad25c12a9cc8868edb6",
     },
 }
 EXCLUDED_PARTS = {".git", ".acgm", ".venv", "__pycache__", "build", "dist"}
