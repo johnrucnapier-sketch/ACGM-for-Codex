@@ -9,7 +9,7 @@ Separate evidence collection, mutation, and verification so that assumptions can
 
 ## Resolve the CLI
 
-Prefer `acgm-codex`. If unavailable, resolve the absolute directory containing this installed `SKILL.md`, ascend two levels to the plugin root, and run `<plugin-root>/bin/acgm-codex`. Never resolve the plugin from the project cwd.
+Resolve the absolute directory containing this installed `SKILL.md`, ascend two levels, and use `<plugin-root>/bin/acgm-codex`. A global `acgm-codex` may point to an older installation. Do not derive the plugin root from the project cwd.
 
 ## Build the gate card
 

@@ -1395,6 +1395,18 @@ class BootstrapTests(unittest.TestCase):
             self.assertEqual(result["status"], "INSTALLED_ENABLED_PENDING_HOOK_TRUST")
             self.assertEqual(sentinel.read_bytes(), b"private data must survive the upgrade")
 
+    def test_030_predecessor_upgrade_preserves_private_data(self) -> None:
+        temp, source, env, fake = self.upgrade_fixture(old_version="0.3.0-rc.1")
+        with temp:
+            private = Path(env["CODEX_HOME"]) / "plugins" / "data" / "acgm-codex"
+            private.mkdir(parents=True, exist_ok=True)
+            sentinel = private / "private-preservation-fixture"
+            sentinel.write_bytes(b"private data must survive the upgrade")
+            result = authorized_execute(source, env=env, runner=fake)
+            self.assertTrue(result["ok"], result)
+            self.assertEqual(result["status"], "INSTALLED_ENABLED_PENDING_HOOK_TRUST")
+            self.assertEqual(sentinel.read_bytes(), b"private data must survive the upgrade")
+
     def test_known_official_upgrade_executes_fixed_sequence_and_verifies_each_step(self) -> None:
         temp, source, env, fake = self.upgrade_fixture()
         with temp:

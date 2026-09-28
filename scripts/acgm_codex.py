@@ -33,7 +33,7 @@ except ImportError:  # pragma: no cover - the supported platforms provide it.
     fcntl = None  # type: ignore[assignment]
 
 
-VERSION = "0.3.0-rc.1"
+VERSION = "0.4.0-rc.1"
 STATE_SCHEMA = "acgm-codex-state-v1"
 LEDGER_SCHEMA = "acgm-codex-event-v1"
 CASE_SCHEMA = "acgm-codex-case-v1"
@@ -49,6 +49,7 @@ QUICKSTART_COMPATIBLE_STATE_VERSIONS = (
     "0.2.0-rc.2",
     "0.2.0-rc.3",
     "0.2.0-rc.4",
+    "0.3.0-rc.1",
 )
 QUICKSTART_MANAGED_DIRECTORIES = (
     ".acgm",
@@ -297,9 +298,9 @@ def _plugin_root() -> Path:
 
 
 def _cli_launcher() -> str:
-    installed = Path.home() / ".local" / "bin" / "acgm-codex"
-    candidate = installed if installed.is_file() else _plugin_root() / "bin" / "acgm-codex"
-    return shlex.quote(str(candidate)) if candidate.is_file() else "acgm-codex"
+    # Stable Hook runtime lives outside the cache; Codex supplies its plugin root.
+    root = Path(os.environ["PLUGIN_ROOT"]) if os.environ.get("PLUGIN_ROOT") else _plugin_root()
+    return shlex.quote(str(root / "bin" / "acgm-codex"))
 
 
 def _installed() -> bool:

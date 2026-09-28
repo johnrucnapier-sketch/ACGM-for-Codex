@@ -1,16 +1,20 @@
-# Optional Session Guardian — integrated module (unreleased)
+# Optional Session Guardian — integrated module (0.4.0-rc.1)
 
 Session Guardian is an opt-in module of ACGM for Codex. The integrated Hook
 configuration registers the existing reader and lifecycle policy inside the
-same plugin; no companion installation is needed for a future integrated release.
+same plugin; no separate companion installation is needed.
 Both sources are SHA-256/length verified before execution. Project opt-in and
 the 35% / 20% / buffered confirmation UX remain unchanged.
 
-The published 0.3.0-rc.1 and the owner's existing local companion remain unchanged.
-This checkout is an unreleased review candidate, not a deployment. Do not enable
-both the companion and integrated module for the same project. Migration must
-preserve old pending requests, verify new Hook definitions, and leave native
-Hook trust to the user. See [the hardening report](HARDENING-2026-09-16.md).
+The immutable 0.3.0-rc.1 release remains unchanged. The integrated module ships
+in 0.4.0-rc.1 and reads the existing project opt-in file. Do not enable both the
+old standalone companion and integrated module for the same project. Upgrading
+the official plugin does not automatically migrate or disable a personal plugin.
+Before switching, preserve companion state and any pending requests, stop new
+work in affected old sessions, and disable the companion through Codex. Review
+new Hook definitions personally after restarting. Pending requests are not
+automatically imported or treated as executed. See the historical
+[hardening report](HARDENING-2026-09-16.md).
 
 ## Findings and selection (2026-09-14)
 

@@ -33,6 +33,21 @@ class RuntimeTests(unittest.TestCase):
         self.env["ACGM_CODEX_DATA_DIR"] = str(self.data)
         self.env["PYTHONDONTWRITEBYTECODE"] = "1"
 
+    def test_cli_guidance_uses_current_plugin_not_global_wrapper(self) -> None:
+        import shlex
+        runtime = self.load_runtime_module()
+        legacy = self.base / ".local/bin/acgm-codex"
+        legacy.parent.mkdir(parents=True)
+        legacy.write_text("#!/bin/sh\nexit 99\n")
+        plugin = self.base / "current plugin"
+        with mock.patch.object(runtime.Path, "home", return_value=self.base):
+            with mock.patch.dict(os.environ, {"PLUGIN_ROOT": str(plugin)}):
+                self.assertEqual(shlex.split(runtime._cli_launcher()),
+                                 [str(plugin / "bin/acgm-codex")])
+            with mock.patch.dict(os.environ, {}, clear=True):
+                self.assertEqual(shlex.split(runtime._cli_launcher()),
+                                 [str(REPO / "bin/acgm-codex")])
+
     def tearDown(self) -> None:
         self.temporary.cleanup()
 

@@ -1,7 +1,7 @@
 # ACGM for Codex
 
 开发候选新增 [Light / Standard / Strict 工作流档位](docs/WORKFLOW-PROFILES.md)：
-调节恢复与提示负担，保留全部现有 Gate；Guardian 独立。尚未发布或升级已安装插件。
+调节恢复与提示负担，保留全部现有 Gate；Guardian 独立。发行候选为 0.4.0-rc.1；安装与桌面实际加载分别验收。
 
 **让长周期 Agent 编码不再悄悄漂移。**
 
@@ -11,7 +11,7 @@ ACGM for Codex 是 ACGM（Agent Coding Governance Methodology）的独立 Codex
 
 [English](README.en.md)
 
-> **候选版：`0.3.0-rc.1`。** 安装前核对 GitHub 上的准确 tag；安装成功与当前任务已加载新版须分别验证。自动测试可以证明
+> **候选版：`0.4.0-rc.1`。** 安装前核对 GitHub 上的准确 tag；安装成功与当前任务已加载新版须分别验证。自动测试可以证明
 > 包结构和运行时行为；只有完成全新 Codex task 中的 Hook 信任与真实工具调用 E2E 后，
 > 才能声称自动机制已在当前 Codex 版本上运行。
 
@@ -83,7 +83,7 @@ Agent 自动克隆准确 tag，并运行：
 
 ```bash
 ACGM_SOURCE="$(mktemp -d)/ACGM-for-Codex"
-git clone --branch v0.3.0-rc.1 --depth 1 \
+git clone --branch v0.4.0-rc.1 --depth 1 \
   https://github.com/johnrucnapier-sketch/ACGM-for-Codex.git "$ACGM_SOURCE"
 python3 "$ACGM_SOURCE/scripts/quickstart.py" \
   --project /准确项目的绝对路径 --dry-run --json
@@ -104,10 +104,10 @@ python3 "$ACGM_SOURCE/scripts/quickstart.py" --project /准确项目的绝对路
 任一事实变化都会使授权失效。
 
 全新安装只调用两条固定官方命令：`codex plugin marketplace add
-johnrucnapier-sketch/ACGM-for-Codex --ref v0.3.0-rc.1 --json` 与 `codex plugin
+johnrucnapier-sketch/ACGM-for-Codex --ref v0.4.0-rc.1 --json` 与 `codex plugin
 add acgm-codex@acgm-codex --json`。唯一的插件自动升级例外，是一个已启用、user scope、
 来源/ref/policy/marketplace snapshot/package bytes/唯一 cache 全部验证通过的官方
-`0.1.0-rc.2` 至 `0.1.0-rc.4` 或 `0.2.0-rc.1` 至 `0.2.0-rc.4`；此时 digest 会明确绑定
+`0.1.0-rc.2` 至 `0.1.0-rc.4` 或 `0.2.0-rc.1` 至 `0.2.0-rc.4` 或 `0.3.0-rc.1`；此时 digest 会明确绑定
 `marketplace remove -> exact-ref marketplace add -> plugin add` 三步。之后再次独立核对
 目标版本和 cache package bytes；外部命令中途失败会报告 partial/recheck，不会声称已回滚。
 升级期间，已经打开的旧 task 仍会调用启动时记住的旧版本 Hook 命令。RC3 及后续版本把完整 runtime
@@ -169,7 +169,7 @@ acgm-codex quickstart status /准确项目绝对路径 --json
 `standard-v1` 是版本化安全预设。用户对 quickstart 的一次授权即表示采用这些准确字节，
 不要求亲手输入 Constitution。已有有效策略始终保留；只有版本号变化且既有 baseline
 仍完全匹配、而且来源是明确兼容的 `0.1.0-rc.2` 至 `0.1.0-rc.4` 或
-`0.2.0-rc.1` 至 `0.2.0-rc.4` project adapter 时，quickstart 才会在同一次
+`0.2.0-rc.1` 至 `0.2.0-rc.4` 或 `0.3.0-rc.1` project adapter 时，quickstart 才会在同一次
 授权中安全升级 adapter state；未知或更高版本不会被自动降级。健康、已手工 activate 的项目
 也可以在保留 activation id 的前提下采用缺失的标准 decision/snapshot。其他 active drift、
 未知 receipt、并发 Git/index 变化、未知占位符、symlink 或非普通文件会在自动吸收前停止。
@@ -234,6 +234,6 @@ python3 scripts/release_check.py
 机械代码使用 MIT；方法论文档和 skill 正文使用 CC-BY-4.0。详见
 [LICENSING.md](LICENSING.md)。
 
-## 可选 Session Guardian（尚未发布）
+## 可选 Session Guardian
 
-当前开发分支已把经过本机试用的 Session Guardian 注册到同一个 ACGM 插件，默认按项目关闭。保留 35%／20% 提醒、带交接余量的确认门与“继续一次”；不会额外调用模型刷新状态。正式安装与现有 companion 的迁移仍需审核。见 [模块说明](docs/SESSION-GUARDIAN.md) 和 [本轮审计报告](docs/HARDENING-2026-09-16.md)。
+0.4.0-rc.1 已把经过本机试用的 Session Guardian 注册到同一个 ACGM 插件，默认按项目关闭。保留 35%／20% 提醒、带交接余量的确认门与“继续一次”；不会额外调用模型刷新状态。已有独立 companion 时须先停用旧版并保留状态，避免重复运行。见 [模块说明](docs/SESSION-GUARDIAN.md) 和 [本轮审计报告](docs/HARDENING-2026-09-16.md)。

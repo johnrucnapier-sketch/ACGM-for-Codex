@@ -7,7 +7,7 @@
 
 | 版本 / 阶段 | 主要解决的问题 |
 |---|---|
-| 未发布候选（2026-09-28） | 普通任务安静启动；项目记录变化改为按需提醒；保留策略与危险操作边界；验证当前 Codex 的 Guardian 生命周期 |
+| 0.4.0-rc.1（2026-09-28） | 普通任务安静启动；项目记录变化改为按需提醒；保留策略与危险操作边界；验证当前 Codex 的 Guardian 生命周期 |
 | 0.3.0-rc.1（2026-09-12） | 用决策记录保留长期项目的重要理由与未决问题；减少多仓库重复提醒 |
 | 0.2.0-rc.4（2026-07-20） | 修复 Constitution 保护误伤普通读取和无关写入的问题 |
 | 0.2.0-rc.3（2026-07-19） | 固定可信 Hook runtime 的位置与摘要，处理缓存清理和重启后的信任边界 |
@@ -19,7 +19,7 @@
 | 0.1.0-rc.1（未发布） | 建立独立 Codex 插件、项目健康状态、evidence gate、验证义务及本机账本 |
 
 
-## Unreleased — lean workflow and project continuity (2026-09-28)
+## 0.4.0-rc.1 — lean workflow and project continuity (2026-09-28)
 
 ### 本阶段的目的与取舍
 
@@ -34,7 +34,7 @@
   回归和原生生命周期验收；未知版本继续拒绝，不更改 Guardian 阈值。
 - 不把短任务小样本当作稳定 token/耗时收益或长期语义恢复已验收。
 
-本阶段验收：246 项源码测试；当前 CLI 的 24 个原生场景、22 条断言通过。
+发行前验收：248 项源码测试；当前 CLI 的 24 个原生场景、22 条断言通过。
 详见 [阶段验收与安装边界](docs/LEAN-WORKFLOW-ACCEPTANCE.md)。
 
 ### 此开发分支前序工作
@@ -55,7 +55,13 @@
 - Include Guardian runtime, dashboard and handoff assets in the development
   snapshot allowlist; verify the copied hash-bound Guardian loader.
 
-No new release version or installed-runtime migration is performed here.
+### Release and upgrade
+
+- Publish a new immutable `v0.4.0-rc.1` candidate; preserve all older tags.
+- Verify the exact official `0.3.0-rc.1` predecessor and preserve private data
+  during the existing digest-bound upgrade flow.
+- Resolve CLI guidance from the current plugin, avoiding stale global wrappers.
+- Desktop restart and personal Hook review remain separate from local installation.
 
 
 ## 0.3.0-rc.1 — 2026-09-12 release candidate
