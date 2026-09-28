@@ -59,9 +59,11 @@ questions and identify any unconfirmed draft or uncommitted ledger work relevant
 to continuation. Do not promise an automatic SessionEnd report: this Codex adapter
 does not implement that Claude mechanism.
 
-Claims and OPEN_THREADS are outside the activation baseline. Accepted ADR changes
-can cause ordinary governance drift; inspect it and use the existing activation
-workflow only within the user's authorization. Never auto-reactivate to hide drift.
+Claims and OPEN_THREADS are outside the activation baseline. Markdown ADR and
+snapshot changes produce an advisory reminder, not a reactivation requirement.
+Review relevant changes on resume; changed text does not establish approval.
+Actual policy changes still require the authorized activation workflow. Never
+auto-reactivate to hide policy drift.
 
 中文：只记录影响决策与路径的信息。开放问题保留在线程表，闭合后立即保存未确认草案；
 沉默、开始实施或换话题都不等于批准。确认只随正常汇报提出，不阻塞、不催问。

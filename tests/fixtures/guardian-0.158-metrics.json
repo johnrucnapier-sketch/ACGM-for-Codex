@@ -1,0 +1,158 @@
+[
+  {
+    "type": "session_meta",
+    "payload": {
+      "id": "fixture",
+      "cwd": "__PROJECT__",
+      "cli_version": "0.158.0-alpha.2.1"
+    }
+  },
+  {
+    "timestamp": "2026-09-28T06:07:32.125Z",
+    "ordinal": 11,
+    "type": "token_usage_record",
+    "payload": {
+      "thread_id": "fixture",
+      "turn_id": "turn-fixture",
+      "session_id": "fixture",
+      "root_turn_id": "turn-fixture",
+      "response_id": "r1",
+      "usage": {
+        "input_tokens": 100,
+        "cached_input_tokens": 0,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 20,
+        "reasoning_output_tokens": 0,
+        "total_tokens": 120
+      },
+      "turn_token_usage": {
+        "input_tokens": 100,
+        "cached_input_tokens": 0,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 20,
+        "reasoning_output_tokens": 0,
+        "total_tokens": 120
+      },
+      "thread_token_usage": {
+        "input_tokens": 100,
+        "cached_input_tokens": 0,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 20,
+        "reasoning_output_tokens": 0,
+        "total_tokens": 120
+      }
+    }
+  },
+  {
+    "timestamp": "2026-09-28T06:07:32.217Z",
+    "ordinal": 15,
+    "type": "event_msg",
+    "payload": {
+      "type": "token_count",
+      "info": {
+        "total_token_usage": {
+          "input_tokens": 100,
+          "cached_input_tokens": 0,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 20,
+          "reasoning_output_tokens": 0,
+          "total_tokens": 120
+        },
+        "last_token_usage": {
+          "input_tokens": 100,
+          "cached_input_tokens": 0,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 20,
+          "reasoning_output_tokens": 0,
+          "total_tokens": 120
+        },
+        "model_context_window": 475000
+      },
+      "rate_limits": {
+        "limit_id": "codex",
+        "limit_name": null,
+        "primary": null,
+        "secondary": null,
+        "credits": null,
+        "individual_limit": null,
+        "spend_control_reached": null,
+        "plan_type": null,
+        "rate_limit_reached_type": null
+      }
+    }
+  },
+  {
+    "timestamp": "2026-09-28T06:07:32.222Z",
+    "ordinal": 18,
+    "type": "token_usage_record",
+    "payload": {
+      "thread_id": "fixture",
+      "turn_id": "turn-fixture",
+      "session_id": "fixture",
+      "root_turn_id": "turn-fixture",
+      "response_id": "r2",
+      "usage": {
+        "input_tokens": 100,
+        "cached_input_tokens": 0,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 20,
+        "reasoning_output_tokens": 0,
+        "total_tokens": 120
+      },
+      "turn_token_usage": {
+        "input_tokens": 200,
+        "cached_input_tokens": 0,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 40,
+        "reasoning_output_tokens": 0,
+        "total_tokens": 240
+      },
+      "thread_token_usage": {
+        "input_tokens": 200,
+        "cached_input_tokens": 0,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 40,
+        "reasoning_output_tokens": 0,
+        "total_tokens": 240
+      }
+    }
+  },
+  {
+    "timestamp": "2026-09-28T06:07:32.223Z",
+    "ordinal": 19,
+    "type": "event_msg",
+    "payload": {
+      "type": "token_count",
+      "info": {
+        "total_token_usage": {
+          "input_tokens": 200,
+          "cached_input_tokens": 0,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 40,
+          "reasoning_output_tokens": 0,
+          "total_tokens": 240
+        },
+        "last_token_usage": {
+          "input_tokens": 100,
+          "cached_input_tokens": 0,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 20,
+          "reasoning_output_tokens": 0,
+          "total_tokens": 120
+        },
+        "model_context_window": 475000
+      },
+      "rate_limits": {
+        "limit_id": "codex",
+        "limit_name": null,
+        "primary": null,
+        "secondary": null,
+        "credits": null,
+        "individual_limit": null,
+        "spend_control_reached": null,
+        "plan_type": null,
+        "rate_limit_reached_type": null
+      }
+    }
+  }
+]

@@ -33,6 +33,21 @@ class RuntimeTests(unittest.TestCase):
         self.env["ACGM_CODEX_DATA_DIR"] = str(self.data)
         self.env["PYTHONDONTWRITEBYTECODE"] = "1"
 
+    def test_cli_guidance_uses_current_plugin_not_global_wrapper(self) -> None:
+        import shlex
+        runtime = self.load_runtime_module()
+        legacy = self.base / ".local/bin/acgm-codex"
+        legacy.parent.mkdir(parents=True)
+        legacy.write_text("#!/bin/sh\nexit 99\n")
+        plugin = self.base / "current plugin"
+        with mock.patch.object(runtime.Path, "home", return_value=self.base):
+            with mock.patch.dict(os.environ, {"PLUGIN_ROOT": str(plugin)}):
+                self.assertEqual(shlex.split(runtime._cli_launcher()),
+                                 [str(plugin / "bin/acgm-codex")])
+            with mock.patch.dict(os.environ, {}, clear=True):
+                self.assertEqual(shlex.split(runtime._cli_launcher()),
+                                 [str(REPO / "bin/acgm-codex")])
+
     def tearDown(self) -> None:
         self.temporary.cleanup()
 
@@ -1629,12 +1644,12 @@ class RuntimeTests(unittest.TestCase):
             self.assertFalse((root / ".acgm").exists())
             self.assertFalse((root / ".governance").exists())
 
-    def test_session_context_scopes_runtime_claim_and_routes_decision_work(self) -> None:
+    def test_healthy_entry_is_quiet_without_losing_heartbeat(self) -> None:
         self.init_activate()
         _, result = self.hook("session-start", self.payload("SessionStart"))
-        context = result["hookSpecificOutput"]["additionalContext"]
-        self.assertIn("decision-ledger", context)
-        self.assertIn("does not prove that other Hooks ran", context)
+        self.assertEqual(result, {})
+        self.assertIn("hook-heartbeat", self.event_kinds())
+        self.assertEqual(self.hook("subagent-start", self.payload("SubagentStart"))[1], {})
 
     def test_decision_drafts_do_not_rebaseline_or_create_stop_obligations(self) -> None:
         self.init_activate()
@@ -1650,7 +1665,9 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(state_path.read_bytes(), baseline)
         (governance / "decisions" / "ADR-test.md").write_text("# Accepted storage decision\n\nUse the reviewed format.\n")
         status = json.loads(self.cli("doctor", str(self.project), "--json").stdout)
-        self.assertEqual(status["project_state"], "DRIFTED")
+        self.assertEqual(status["project_state"], "GOVERNED")
+        self.assertIn(".governance/decisions:changed", status["record_changes"])
+        self.assertEqual(self.hook("stop", self.payload("Stop"))[1], {})
         self.assertEqual(state_path.read_bytes(), baseline)
 
     def test_inactive_residual_adapter_does_not_hide_ambiguous_container(self) -> None:
@@ -1759,13 +1776,14 @@ class RuntimeTests(unittest.TestCase):
         self.assertTrue((workspace / "CONSTITUTION.md").is_file())
         self.assertFalse((nested / "CONSTITUTION.md").exists())
 
-    def test_directory_content_change_produces_drift(self) -> None:
+    def test_directory_record_change_is_advisory(self) -> None:
         self.init_activate()
         decision = self.project / ".governance" / "decisions" / "0001-initial.md"
         decision.write_text(decision.read_text(encoding="utf-8") + "Changed later.\n", encoding="utf-8")
         doctor = json.loads(self.cli("doctor", str(self.project), "--json", check=True).stdout)
-        self.assertEqual(doctor["project_state"], "DRIFTED")
-        self.assertIn(".governance/decisions:changed", doctor["drift"])
+        self.assertEqual(doctor["project_state"], "GOVERNED")
+        self.assertIn(".governance/decisions:changed", doctor["record_changes"])
+        self.assertEqual(self.pre_bash("pwd"), {})
 
     def test_activate_doctor_and_hook_observation(self) -> None:
         self.init_activate()
@@ -1779,7 +1797,7 @@ class RuntimeTests(unittest.TestCase):
             "session-start",
             self.payload("SessionStart", source="startup", model="private-model-name"),
         )
-        self.assertEqual(output["hookSpecificOutput"]["hookEventName"], "SessionStart")
+        self.assertEqual(output, {})
         after = json.loads(
             self.cli("doctor", str(self.project), "--json", "--strict", check=True).stdout
         )
@@ -1823,11 +1841,11 @@ class RuntimeTests(unittest.TestCase):
         self.assertIn("AGENTS.md", doctor["missing"])
         self.assertTrue(any(item.startswith("AGENTS.md:") for item in doctor["drift"]))
 
-    def test_uninitialized_project_is_warn_only_and_not_blocked(self) -> None:
+    def test_uninitialized_project_is_quiet_and_not_blocked(self) -> None:
         output = self.pre_bash("git reset --hard HEAD")
         self.assertEqual(output, {})
         _, start = self.hook("session-start", self.payload("SessionStart", source="startup"))
-        self.assertIn("not active", start["hookSpecificOutput"]["additionalContext"])
+        self.assertEqual(start, {})
         self.assertNotIn("gate-denied", self.event_kinds())
 
     def test_apply_patch_body_mention_is_allowed_but_target_is_blocked(self) -> None:
@@ -2313,7 +2331,7 @@ runpy.run_path(runtime, run_name="__main__")
         self.assertEqual(report.returncode, 2)
         self.assertIn("invalid JSON", report.stderr)
 
-    def test_invalid_hook_json_fails_open_but_records_error(self) -> None:
+    def test_invalid_hook_json_denies_and_records_error(self) -> None:
         result = subprocess.run(
             [sys.executable, str(RUNTIME), "hook", "pre-tool"],
             cwd=str(self.project),
@@ -2325,7 +2343,7 @@ runpy.run_path(runtime, run_name="__main__")
         )
         self.assertEqual(result.returncode, 0)
         output = json.loads(result.stdout)
-        self.assertIn("failed open", output["systemMessage"])
+        self.assertEqual(output["hookSpecificOutput"]["permissionDecision"], "deny")
         self.assertIn("runtime-error", self.event_kinds())
 
     def test_export_never_overwrites_existing_or_governance_state(self) -> None:

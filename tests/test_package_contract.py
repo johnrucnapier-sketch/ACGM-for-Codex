@@ -22,6 +22,7 @@ VERSION_PATTERN = re.compile(
     r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$"
 )
 EXPECTED_SKILLS = {
+    "session-handoff",
     "decision-ledger",
     "activity-report",
     "governance-bootstrap",
@@ -40,6 +41,7 @@ EXPECTED_HOOKS = {
     "PostToolUse": ("Bash|apply_patch|Edit|Write", "post-tool", 5),
     "PreCompact": ("manual|auto", "pre-compact", 10),
     "Stop": (None, "stop", 10),
+    "Interrupt": (None, "interrupt", 3),
 }
 RUNTIME_SHA256 = hashlib.sha256(RUNTIME_PATH.read_bytes()).hexdigest()
 RUNTIME_SIZE = RUNTIME_PATH.stat().st_size
@@ -193,13 +195,13 @@ class PackageContractTests(unittest.TestCase):
         self.assertFalse((ROOT / "hooks.json").exists())
         hooks = read_json(HOOK_PATH).get("hooks")
         self.assertIsInstance(hooks, dict)
-        self.assertEqual(set(hooks), set(EXPECTED_HOOKS))
+        self.assertEqual(set(hooks), set(EXPECTED_HOOKS) | {"UserPromptSubmit"})
 
     def test_hook_schema_commands_and_timeouts(self) -> None:
         hooks = read_json(HOOK_PATH)["hooks"]
         for event, (matcher, mode, timeout) in EXPECTED_HOOKS.items():
             with self.subTest(event=event):
-                groups = hooks[event]
+                groups = [g for g in hooks[event] if g["hooks"][0]["statusMessage"] != "ACGM 会话缓冲检查"]
                 self.assertIsInstance(groups, list)
                 self.assertEqual(len(groups), 1)
                 group = groups[0]
@@ -230,7 +232,7 @@ class PackageContractTests(unittest.TestCase):
                 self.assertEqual(handler["timeout"], timeout)
                 self.assertGreater(len(handler["statusMessage"].strip()), 10)
 
-    def test_hook_wrapper_fails_open_when_stable_runtime_is_missing(self) -> None:
+    def test_hook_wrapper_denies_pretool_when_stable_runtime_is_missing(self) -> None:
         hooks = read_json(HOOK_PATH)["hooks"]
         with tempfile.TemporaryDirectory(prefix="acgm missing plugin ") as raw:
             plugin_data = Path(raw)
@@ -252,7 +254,7 @@ class PackageContractTests(unittest.TestCase):
                         timeout=5,
                     )
                     self.assertEqual(completed.returncode, 0, completed.stderr)
-                    self.assertEqual(json.loads(completed.stdout), {})
+                    self.assertEqual(json.loads(completed.stdout)["hookSpecificOutput"]["permissionDecision"], "deny") if event == "PreToolUse" else self.assertEqual(json.loads(completed.stdout), {})
 
     def test_hook_wrapper_preserves_runtime_arguments_when_present(self) -> None:
         hooks = read_json(HOOK_PATH)["hooks"]
@@ -418,10 +420,9 @@ class PackageContractTests(unittest.TestCase):
     def test_hooks_use_only_codex_contract(self) -> None:
         raw = HOOK_PATH.read_text(encoding="utf-8")
         self.assertIn("PLUGIN_DATA", raw)
-        self.assertNotIn("PLUGIN_ROOT", raw)
+        self.assertIn("PLUGIN_ROOT", raw)  # Optional Guardian sources are hash-bound.
         self.assertNotIn("CLAUDE_", raw)
         for unsupported in (
-            "UserPromptSubmit",
             "PostCompact",
             "SubagentStop",
             "SessionEnd",

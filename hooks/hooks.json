@@ -6,9 +6,19 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -c \"import hashlib,os,stat,sys\nd=os.environ.get('PLUGIN_DATA')\np=os.path.join(d,'runtime','acgm_codex.py') if d else ''\ne=169418\nb=None\ntry:\n l=os.lstat(p)\n if stat.S_ISREG(l.st_mode):\n  f=os.open(p,os.O_RDONLY|getattr(os,'O_NOFOLLOW',0)|getattr(os,'O_NONBLOCK',0))\n  with os.fdopen(f,'rb') as h:\n   s=os.fstat(h.fileno())\n   if stat.S_ISREG(s.st_mode) and s.st_size==e:\n    b=h.read(e+1)\nexcept OSError:\n pass\nif b is not None and len(b)==e and hashlib.sha256(b).hexdigest()=='5f733bcc0d67299b9cdb253a612b5eaded7acefbf5e87662d1ec1d84e83a007b':\n sys.argv=[p,*sys.argv[1:]]\n exec(compile(b,p,'exec'),{'__name__':'__main__','__file__':p,'__package__':None,'__cached__':None})\nelse:\n print('{}')\" hook session-start",
+            "command": "python3 -c 'import hashlib,os,stat,sys\nd=os.environ.get('\"'\"'PLUGIN_DATA'\"'\"')\np=os.path.join(d,'\"'\"'runtime'\"'\"','\"'\"'acgm_codex.py'\"'\"') if d else '\"'\"''\"'\"'\ne=183041\nb=None\ntry:\n l=os.lstat(p)\n if stat.S_ISREG(l.st_mode):\n  f=os.open(p,os.O_RDONLY|getattr(os,'\"'\"'O_NOFOLLOW'\"'\"',0)|getattr(os,'\"'\"'O_NONBLOCK'\"'\"',0))\n  with os.fdopen(f,'\"'\"'rb'\"'\"') as h:\n   s=os.fstat(h.fileno())\n   if stat.S_ISREG(s.st_mode) and s.st_size==e:\n    b=h.read(e+1)\nexcept OSError:\n pass\nif b is not None and len(b)==e and hashlib.sha256(b).hexdigest()=='\"'\"'5ca58ded6cb39292a2761c18fe1180dd4bc51ccd28260ad25c12a9cc8868edb6'\"'\"':\n sys.argv=[p,*sys.argv[1:]]\n exec(compile(b,p,'\"'\"'exec'\"'\"'),{'\"'\"'__name__'\"'\"':'\"'\"'__main__'\"'\"','\"'\"'__file__'\"'\"':p,'\"'\"'__package__'\"'\"':None,'\"'\"'__cached__'\"'\"':None})\nelse:\n print('\"'\"'{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"ACGM runtime integrity unavailable\"}}'\"'\"' if sys.argv[-1]=='\"'\"'pre-tool'\"'\"' else '\"'\"'{}'\"'\"')' hook session-start",
             "timeout": 10,
             "statusMessage": "ACGM is grounding the Codex session"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -c 'import hashlib,json,os,stat,sys\nparts=[]\ntry:\n for name,size,digest in [('\"'\"'session_guardian.py'\"'\"', 16571, '\"'\"'38adb0fb34c804c73e5398870ae196d86ac330b1d1fc3cabc853dd5e7ef40616'\"'\"'), ('\"'\"'session_hooks.py'\"'\"', 14080, '\"'\"'cfba1bf25e901d86a53e11a2977775c668ae9c71a81047f116dc2e682decc178'\"'\"')]:\n  p=os.path.join(os.environ['\"'\"'PLUGIN_ROOT'\"'\"'],'\"'\"'scripts'\"'\"',name)\n  fd=os.open(p,os.O_RDONLY|getattr(os,'\"'\"'O_NOFOLLOW'\"'\"',0)|getattr(os,'\"'\"'O_NONBLOCK'\"'\"',0))\n  with os.fdopen(fd,'\"'\"'rb'\"'\"') as f:\n   if not stat.S_ISREG(os.fstat(f.fileno()).st_mode): raise ValueError('\"'\"'Unsafe runtime'\"'\"')\n   b=f.read(size+1)\n  if len(b)!=size or hashlib.sha256(b).hexdigest()!=digest: raise ValueError('\"'\"'Runtime mismatch'\"'\"')\n  parts.append(b.decode())\nexcept Exception:\n try: event=json.load(sys.stdin).get('\"'\"'hook_event_name'\"'\"')\n except Exception: event='\"'\"'PreToolUse'\"'\"'\n reason='\"'\"'ACGM Session Guardian runtime integrity unavailable.'\"'\"'\n result={'\"'\"'continue'\"'\"':False,'\"'\"'stopReason'\"'\"':reason}\n if event=='\"'\"'PreToolUse'\"'\"': result={'\"'\"'hookSpecificOutput'\"'\"':{'\"'\"'hookEventName'\"'\"':event,'\"'\"'permissionDecision'\"'\"':'\"'\"'deny'\"'\"','\"'\"'permissionDecisionReason'\"'\"':reason}}\n if event=='\"'\"'UserPromptSubmit'\"'\"': result={'\"'\"'decision'\"'\"':'\"'\"'block'\"'\"','\"'\"'reason'\"'\"':reason}\n print(json.dumps(result));sys.exit(0)\ncode=parts[0].rsplit('\"'\"'\\nif __name__ == \"__main__\":'\"'\"',1)[0]+'\"'\"'\\n'\"'\"'+parts[1]+'\"'\"'\\nhook_main()\\n'\"'\"'\nexec(compile(code,p,'\"'\"'exec'\"'\"'),{'\"'\"'__name__'\"'\"':'\"'\"'acgm_session_hooks'\"'\"','\"'\"'__file__'\"'\"':p})'",
+            "timeout": 10,
+            "statusMessage": "ACGM 会话缓冲检查"
           }
         ]
       }
@@ -18,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -c \"import hashlib,os,stat,sys\nd=os.environ.get('PLUGIN_DATA')\np=os.path.join(d,'runtime','acgm_codex.py') if d else ''\ne=169418\nb=None\ntry:\n l=os.lstat(p)\n if stat.S_ISREG(l.st_mode):\n  f=os.open(p,os.O_RDONLY|getattr(os,'O_NOFOLLOW',0)|getattr(os,'O_NONBLOCK',0))\n  with os.fdopen(f,'rb') as h:\n   s=os.fstat(h.fileno())\n   if stat.S_ISREG(s.st_mode) and s.st_size==e:\n    b=h.read(e+1)\nexcept OSError:\n pass\nif b is not None and len(b)==e and hashlib.sha256(b).hexdigest()=='5f733bcc0d67299b9cdb253a612b5eaded7acefbf5e87662d1ec1d84e83a007b':\n sys.argv=[p,*sys.argv[1:]]\n exec(compile(b,p,'exec'),{'__name__':'__main__','__file__':p,'__package__':None,'__cached__':None})\nelse:\n print('{}')\" hook subagent-start",
+            "command": "python3 -c 'import hashlib,os,stat,sys\nd=os.environ.get('\"'\"'PLUGIN_DATA'\"'\"')\np=os.path.join(d,'\"'\"'runtime'\"'\"','\"'\"'acgm_codex.py'\"'\"') if d else '\"'\"''\"'\"'\ne=183041\nb=None\ntry:\n l=os.lstat(p)\n if stat.S_ISREG(l.st_mode):\n  f=os.open(p,os.O_RDONLY|getattr(os,'\"'\"'O_NOFOLLOW'\"'\"',0)|getattr(os,'\"'\"'O_NONBLOCK'\"'\"',0))\n  with os.fdopen(f,'\"'\"'rb'\"'\"') as h:\n   s=os.fstat(h.fileno())\n   if stat.S_ISREG(s.st_mode) and s.st_size==e:\n    b=h.read(e+1)\nexcept OSError:\n pass\nif b is not None and len(b)==e and hashlib.sha256(b).hexdigest()=='\"'\"'5ca58ded6cb39292a2761c18fe1180dd4bc51ccd28260ad25c12a9cc8868edb6'\"'\"':\n sys.argv=[p,*sys.argv[1:]]\n exec(compile(b,p,'\"'\"'exec'\"'\"'),{'\"'\"'__name__'\"'\"':'\"'\"'__main__'\"'\"','\"'\"'__file__'\"'\"':p,'\"'\"'__package__'\"'\"':None,'\"'\"'__cached__'\"'\"':None})\nelse:\n print('\"'\"'{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"ACGM runtime integrity unavailable\"}}'\"'\"' if sys.argv[-1]=='\"'\"'pre-tool'\"'\"' else '\"'\"'{}'\"'\"')' hook subagent-start",
             "timeout": 5,
             "statusMessage": "ACGM is grounding the Codex subagent"
           }
@@ -31,9 +41,19 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -c \"import hashlib,os,stat,sys\nd=os.environ.get('PLUGIN_DATA')\np=os.path.join(d,'runtime','acgm_codex.py') if d else ''\ne=169418\nb=None\ntry:\n l=os.lstat(p)\n if stat.S_ISREG(l.st_mode):\n  f=os.open(p,os.O_RDONLY|getattr(os,'O_NOFOLLOW',0)|getattr(os,'O_NONBLOCK',0))\n  with os.fdopen(f,'rb') as h:\n   s=os.fstat(h.fileno())\n   if stat.S_ISREG(s.st_mode) and s.st_size==e:\n    b=h.read(e+1)\nexcept OSError:\n pass\nif b is not None and len(b)==e and hashlib.sha256(b).hexdigest()=='5f733bcc0d67299b9cdb253a612b5eaded7acefbf5e87662d1ec1d84e83a007b':\n sys.argv=[p,*sys.argv[1:]]\n exec(compile(b,p,'exec'),{'__name__':'__main__','__file__':p,'__package__':None,'__cached__':None})\nelse:\n print('{}')\" hook pre-tool",
+            "command": "python3 -c 'import hashlib,os,stat,sys\nd=os.environ.get('\"'\"'PLUGIN_DATA'\"'\"')\np=os.path.join(d,'\"'\"'runtime'\"'\"','\"'\"'acgm_codex.py'\"'\"') if d else '\"'\"''\"'\"'\ne=183041\nb=None\ntry:\n l=os.lstat(p)\n if stat.S_ISREG(l.st_mode):\n  f=os.open(p,os.O_RDONLY|getattr(os,'\"'\"'O_NOFOLLOW'\"'\"',0)|getattr(os,'\"'\"'O_NONBLOCK'\"'\"',0))\n  with os.fdopen(f,'\"'\"'rb'\"'\"') as h:\n   s=os.fstat(h.fileno())\n   if stat.S_ISREG(s.st_mode) and s.st_size==e:\n    b=h.read(e+1)\nexcept OSError:\n pass\nif b is not None and len(b)==e and hashlib.sha256(b).hexdigest()=='\"'\"'5ca58ded6cb39292a2761c18fe1180dd4bc51ccd28260ad25c12a9cc8868edb6'\"'\"':\n sys.argv=[p,*sys.argv[1:]]\n exec(compile(b,p,'\"'\"'exec'\"'\"'),{'\"'\"'__name__'\"'\"':'\"'\"'__main__'\"'\"','\"'\"'__file__'\"'\"':p,'\"'\"'__package__'\"'\"':None,'\"'\"'__cached__'\"'\"':None})\nelse:\n print('\"'\"'{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"ACGM runtime integrity unavailable\"}}'\"'\"' if sys.argv[-1]=='\"'\"'pre-tool'\"'\"' else '\"'\"'{}'\"'\"')' hook pre-tool",
             "timeout": 5,
             "statusMessage": "ACGM is checking the planned tool use"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -c 'import hashlib,json,os,stat,sys\nparts=[]\ntry:\n for name,size,digest in [('\"'\"'session_guardian.py'\"'\"', 16571, '\"'\"'38adb0fb34c804c73e5398870ae196d86ac330b1d1fc3cabc853dd5e7ef40616'\"'\"'), ('\"'\"'session_hooks.py'\"'\"', 14080, '\"'\"'cfba1bf25e901d86a53e11a2977775c668ae9c71a81047f116dc2e682decc178'\"'\"')]:\n  p=os.path.join(os.environ['\"'\"'PLUGIN_ROOT'\"'\"'],'\"'\"'scripts'\"'\"',name)\n  fd=os.open(p,os.O_RDONLY|getattr(os,'\"'\"'O_NOFOLLOW'\"'\"',0)|getattr(os,'\"'\"'O_NONBLOCK'\"'\"',0))\n  with os.fdopen(fd,'\"'\"'rb'\"'\"') as f:\n   if not stat.S_ISREG(os.fstat(f.fileno()).st_mode): raise ValueError('\"'\"'Unsafe runtime'\"'\"')\n   b=f.read(size+1)\n  if len(b)!=size or hashlib.sha256(b).hexdigest()!=digest: raise ValueError('\"'\"'Runtime mismatch'\"'\"')\n  parts.append(b.decode())\nexcept Exception:\n try: event=json.load(sys.stdin).get('\"'\"'hook_event_name'\"'\"')\n except Exception: event='\"'\"'PreToolUse'\"'\"'\n reason='\"'\"'ACGM Session Guardian runtime integrity unavailable.'\"'\"'\n result={'\"'\"'continue'\"'\"':False,'\"'\"'stopReason'\"'\"':reason}\n if event=='\"'\"'PreToolUse'\"'\"': result={'\"'\"'hookSpecificOutput'\"'\"':{'\"'\"'hookEventName'\"'\"':event,'\"'\"'permissionDecision'\"'\"':'\"'\"'deny'\"'\"','\"'\"'permissionDecisionReason'\"'\"':reason}}\n if event=='\"'\"'UserPromptSubmit'\"'\"': result={'\"'\"'decision'\"'\"':'\"'\"'block'\"'\"','\"'\"'reason'\"'\"':reason}\n print(json.dumps(result));sys.exit(0)\ncode=parts[0].rsplit('\"'\"'\\nif __name__ == \"__main__\":'\"'\"',1)[0]+'\"'\"'\\n'\"'\"'+parts[1]+'\"'\"'\\nhook_main()\\n'\"'\"'\nexec(compile(code,p,'\"'\"'exec'\"'\"'),{'\"'\"'__name__'\"'\"':'\"'\"'acgm_session_hooks'\"'\"','\"'\"'__file__'\"'\"':p})'",
+            "timeout": 10,
+            "statusMessage": "ACGM 会话缓冲检查"
           }
         ]
       }
@@ -44,7 +64,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -c \"import hashlib,os,stat,sys\nd=os.environ.get('PLUGIN_DATA')\np=os.path.join(d,'runtime','acgm_codex.py') if d else ''\ne=169418\nb=None\ntry:\n l=os.lstat(p)\n if stat.S_ISREG(l.st_mode):\n  f=os.open(p,os.O_RDONLY|getattr(os,'O_NOFOLLOW',0)|getattr(os,'O_NONBLOCK',0))\n  with os.fdopen(f,'rb') as h:\n   s=os.fstat(h.fileno())\n   if stat.S_ISREG(s.st_mode) and s.st_size==e:\n    b=h.read(e+1)\nexcept OSError:\n pass\nif b is not None and len(b)==e and hashlib.sha256(b).hexdigest()=='5f733bcc0d67299b9cdb253a612b5eaded7acefbf5e87662d1ec1d84e83a007b':\n sys.argv=[p,*sys.argv[1:]]\n exec(compile(b,p,'exec'),{'__name__':'__main__','__file__':p,'__package__':None,'__cached__':None})\nelse:\n print('{}')\" hook permission-request",
+            "command": "python3 -c 'import hashlib,os,stat,sys\nd=os.environ.get('\"'\"'PLUGIN_DATA'\"'\"')\np=os.path.join(d,'\"'\"'runtime'\"'\"','\"'\"'acgm_codex.py'\"'\"') if d else '\"'\"''\"'\"'\ne=183041\nb=None\ntry:\n l=os.lstat(p)\n if stat.S_ISREG(l.st_mode):\n  f=os.open(p,os.O_RDONLY|getattr(os,'\"'\"'O_NOFOLLOW'\"'\"',0)|getattr(os,'\"'\"'O_NONBLOCK'\"'\"',0))\n  with os.fdopen(f,'\"'\"'rb'\"'\"') as h:\n   s=os.fstat(h.fileno())\n   if stat.S_ISREG(s.st_mode) and s.st_size==e:\n    b=h.read(e+1)\nexcept OSError:\n pass\nif b is not None and len(b)==e and hashlib.sha256(b).hexdigest()=='\"'\"'5ca58ded6cb39292a2761c18fe1180dd4bc51ccd28260ad25c12a9cc8868edb6'\"'\"':\n sys.argv=[p,*sys.argv[1:]]\n exec(compile(b,p,'\"'\"'exec'\"'\"'),{'\"'\"'__name__'\"'\"':'\"'\"'__main__'\"'\"','\"'\"'__file__'\"'\"':p,'\"'\"'__package__'\"'\"':None,'\"'\"'__cached__'\"'\"':None})\nelse:\n print('\"'\"'{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"ACGM runtime integrity unavailable\"}}'\"'\"' if sys.argv[-1]=='\"'\"'pre-tool'\"'\"' else '\"'\"'{}'\"'\"')' hook permission-request",
             "timeout": 5,
             "statusMessage": "ACGM is recording the permission boundary"
           }
@@ -57,9 +77,19 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -c \"import hashlib,os,stat,sys\nd=os.environ.get('PLUGIN_DATA')\np=os.path.join(d,'runtime','acgm_codex.py') if d else ''\ne=169418\nb=None\ntry:\n l=os.lstat(p)\n if stat.S_ISREG(l.st_mode):\n  f=os.open(p,os.O_RDONLY|getattr(os,'O_NOFOLLOW',0)|getattr(os,'O_NONBLOCK',0))\n  with os.fdopen(f,'rb') as h:\n   s=os.fstat(h.fileno())\n   if stat.S_ISREG(s.st_mode) and s.st_size==e:\n    b=h.read(e+1)\nexcept OSError:\n pass\nif b is not None and len(b)==e and hashlib.sha256(b).hexdigest()=='5f733bcc0d67299b9cdb253a612b5eaded7acefbf5e87662d1ec1d84e83a007b':\n sys.argv=[p,*sys.argv[1:]]\n exec(compile(b,p,'exec'),{'__name__':'__main__','__file__':p,'__package__':None,'__cached__':None})\nelse:\n print('{}')\" hook post-tool",
+            "command": "python3 -c 'import hashlib,os,stat,sys\nd=os.environ.get('\"'\"'PLUGIN_DATA'\"'\"')\np=os.path.join(d,'\"'\"'runtime'\"'\"','\"'\"'acgm_codex.py'\"'\"') if d else '\"'\"''\"'\"'\ne=183041\nb=None\ntry:\n l=os.lstat(p)\n if stat.S_ISREG(l.st_mode):\n  f=os.open(p,os.O_RDONLY|getattr(os,'\"'\"'O_NOFOLLOW'\"'\"',0)|getattr(os,'\"'\"'O_NONBLOCK'\"'\"',0))\n  with os.fdopen(f,'\"'\"'rb'\"'\"') as h:\n   s=os.fstat(h.fileno())\n   if stat.S_ISREG(s.st_mode) and s.st_size==e:\n    b=h.read(e+1)\nexcept OSError:\n pass\nif b is not None and len(b)==e and hashlib.sha256(b).hexdigest()=='\"'\"'5ca58ded6cb39292a2761c18fe1180dd4bc51ccd28260ad25c12a9cc8868edb6'\"'\"':\n sys.argv=[p,*sys.argv[1:]]\n exec(compile(b,p,'\"'\"'exec'\"'\"'),{'\"'\"'__name__'\"'\"':'\"'\"'__main__'\"'\"','\"'\"'__file__'\"'\"':p,'\"'\"'__package__'\"'\"':None,'\"'\"'__cached__'\"'\"':None})\nelse:\n print('\"'\"'{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"ACGM runtime integrity unavailable\"}}'\"'\"' if sys.argv[-1]=='\"'\"'pre-tool'\"'\"' else '\"'\"'{}'\"'\"')' hook post-tool",
             "timeout": 5,
             "statusMessage": "ACGM is recording the completed tool use"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -c 'import hashlib,json,os,stat,sys\nparts=[]\ntry:\n for name,size,digest in [('\"'\"'session_guardian.py'\"'\"', 16571, '\"'\"'38adb0fb34c804c73e5398870ae196d86ac330b1d1fc3cabc853dd5e7ef40616'\"'\"'), ('\"'\"'session_hooks.py'\"'\"', 14080, '\"'\"'cfba1bf25e901d86a53e11a2977775c668ae9c71a81047f116dc2e682decc178'\"'\"')]:\n  p=os.path.join(os.environ['\"'\"'PLUGIN_ROOT'\"'\"'],'\"'\"'scripts'\"'\"',name)\n  fd=os.open(p,os.O_RDONLY|getattr(os,'\"'\"'O_NOFOLLOW'\"'\"',0)|getattr(os,'\"'\"'O_NONBLOCK'\"'\"',0))\n  with os.fdopen(fd,'\"'\"'rb'\"'\"') as f:\n   if not stat.S_ISREG(os.fstat(f.fileno()).st_mode): raise ValueError('\"'\"'Unsafe runtime'\"'\"')\n   b=f.read(size+1)\n  if len(b)!=size or hashlib.sha256(b).hexdigest()!=digest: raise ValueError('\"'\"'Runtime mismatch'\"'\"')\n  parts.append(b.decode())\nexcept Exception:\n try: event=json.load(sys.stdin).get('\"'\"'hook_event_name'\"'\"')\n except Exception: event='\"'\"'PreToolUse'\"'\"'\n reason='\"'\"'ACGM Session Guardian runtime integrity unavailable.'\"'\"'\n result={'\"'\"'continue'\"'\"':False,'\"'\"'stopReason'\"'\"':reason}\n if event=='\"'\"'PreToolUse'\"'\"': result={'\"'\"'hookSpecificOutput'\"'\"':{'\"'\"'hookEventName'\"'\"':event,'\"'\"'permissionDecision'\"'\"':'\"'\"'deny'\"'\"','\"'\"'permissionDecisionReason'\"'\"':reason}}\n if event=='\"'\"'UserPromptSubmit'\"'\"': result={'\"'\"'decision'\"'\"':'\"'\"'block'\"'\"','\"'\"'reason'\"'\"':reason}\n print(json.dumps(result));sys.exit(0)\ncode=parts[0].rsplit('\"'\"'\\nif __name__ == \"__main__\":'\"'\"',1)[0]+'\"'\"'\\n'\"'\"'+parts[1]+'\"'\"'\\nhook_main()\\n'\"'\"'\nexec(compile(code,p,'\"'\"'exec'\"'\"'),{'\"'\"'__name__'\"'\"':'\"'\"'acgm_session_hooks'\"'\"','\"'\"'__file__'\"'\"':p})'",
+            "timeout": 10,
+            "statusMessage": "ACGM 会话缓冲检查"
           }
         ]
       }
@@ -70,9 +100,19 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -c \"import hashlib,os,stat,sys\nd=os.environ.get('PLUGIN_DATA')\np=os.path.join(d,'runtime','acgm_codex.py') if d else ''\ne=169418\nb=None\ntry:\n l=os.lstat(p)\n if stat.S_ISREG(l.st_mode):\n  f=os.open(p,os.O_RDONLY|getattr(os,'O_NOFOLLOW',0)|getattr(os,'O_NONBLOCK',0))\n  with os.fdopen(f,'rb') as h:\n   s=os.fstat(h.fileno())\n   if stat.S_ISREG(s.st_mode) and s.st_size==e:\n    b=h.read(e+1)\nexcept OSError:\n pass\nif b is not None and len(b)==e and hashlib.sha256(b).hexdigest()=='5f733bcc0d67299b9cdb253a612b5eaded7acefbf5e87662d1ec1d84e83a007b':\n sys.argv=[p,*sys.argv[1:]]\n exec(compile(b,p,'exec'),{'__name__':'__main__','__file__':p,'__package__':None,'__cached__':None})\nelse:\n print('{}')\" hook pre-compact",
+            "command": "python3 -c 'import hashlib,os,stat,sys\nd=os.environ.get('\"'\"'PLUGIN_DATA'\"'\"')\np=os.path.join(d,'\"'\"'runtime'\"'\"','\"'\"'acgm_codex.py'\"'\"') if d else '\"'\"''\"'\"'\ne=183041\nb=None\ntry:\n l=os.lstat(p)\n if stat.S_ISREG(l.st_mode):\n  f=os.open(p,os.O_RDONLY|getattr(os,'\"'\"'O_NOFOLLOW'\"'\"',0)|getattr(os,'\"'\"'O_NONBLOCK'\"'\"',0))\n  with os.fdopen(f,'\"'\"'rb'\"'\"') as h:\n   s=os.fstat(h.fileno())\n   if stat.S_ISREG(s.st_mode) and s.st_size==e:\n    b=h.read(e+1)\nexcept OSError:\n pass\nif b is not None and len(b)==e and hashlib.sha256(b).hexdigest()=='\"'\"'5ca58ded6cb39292a2761c18fe1180dd4bc51ccd28260ad25c12a9cc8868edb6'\"'\"':\n sys.argv=[p,*sys.argv[1:]]\n exec(compile(b,p,'\"'\"'exec'\"'\"'),{'\"'\"'__name__'\"'\"':'\"'\"'__main__'\"'\"','\"'\"'__file__'\"'\"':p,'\"'\"'__package__'\"'\"':None,'\"'\"'__cached__'\"'\"':None})\nelse:\n print('\"'\"'{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"ACGM runtime integrity unavailable\"}}'\"'\"' if sys.argv[-1]=='\"'\"'pre-tool'\"'\"' else '\"'\"'{}'\"'\"')' hook pre-compact",
             "timeout": 10,
             "statusMessage": "ACGM is preserving governance state before compaction"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -c 'import hashlib,json,os,stat,sys\nparts=[]\ntry:\n for name,size,digest in [('\"'\"'session_guardian.py'\"'\"', 16571, '\"'\"'38adb0fb34c804c73e5398870ae196d86ac330b1d1fc3cabc853dd5e7ef40616'\"'\"'), ('\"'\"'session_hooks.py'\"'\"', 14080, '\"'\"'cfba1bf25e901d86a53e11a2977775c668ae9c71a81047f116dc2e682decc178'\"'\"')]:\n  p=os.path.join(os.environ['\"'\"'PLUGIN_ROOT'\"'\"'],'\"'\"'scripts'\"'\"',name)\n  fd=os.open(p,os.O_RDONLY|getattr(os,'\"'\"'O_NOFOLLOW'\"'\"',0)|getattr(os,'\"'\"'O_NONBLOCK'\"'\"',0))\n  with os.fdopen(fd,'\"'\"'rb'\"'\"') as f:\n   if not stat.S_ISREG(os.fstat(f.fileno()).st_mode): raise ValueError('\"'\"'Unsafe runtime'\"'\"')\n   b=f.read(size+1)\n  if len(b)!=size or hashlib.sha256(b).hexdigest()!=digest: raise ValueError('\"'\"'Runtime mismatch'\"'\"')\n  parts.append(b.decode())\nexcept Exception:\n try: event=json.load(sys.stdin).get('\"'\"'hook_event_name'\"'\"')\n except Exception: event='\"'\"'PreToolUse'\"'\"'\n reason='\"'\"'ACGM Session Guardian runtime integrity unavailable.'\"'\"'\n result={'\"'\"'continue'\"'\"':False,'\"'\"'stopReason'\"'\"':reason}\n if event=='\"'\"'PreToolUse'\"'\"': result={'\"'\"'hookSpecificOutput'\"'\"':{'\"'\"'hookEventName'\"'\"':event,'\"'\"'permissionDecision'\"'\"':'\"'\"'deny'\"'\"','\"'\"'permissionDecisionReason'\"'\"':reason}}\n if event=='\"'\"'UserPromptSubmit'\"'\"': result={'\"'\"'decision'\"'\"':'\"'\"'block'\"'\"','\"'\"'reason'\"'\"':reason}\n print(json.dumps(result));sys.exit(0)\ncode=parts[0].rsplit('\"'\"'\\nif __name__ == \"__main__\":'\"'\"',1)[0]+'\"'\"'\\n'\"'\"'+parts[1]+'\"'\"'\\nhook_main()\\n'\"'\"'\nexec(compile(code,p,'\"'\"'exec'\"'\"'),{'\"'\"'__name__'\"'\"':'\"'\"'acgm_session_hooks'\"'\"','\"'\"'__file__'\"'\"':p})'",
+            "timeout": 10,
+            "statusMessage": "ACGM 会话缓冲检查"
           }
         ]
       }
@@ -82,9 +122,43 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -c \"import hashlib,os,stat,sys\nd=os.environ.get('PLUGIN_DATA')\np=os.path.join(d,'runtime','acgm_codex.py') if d else ''\ne=169418\nb=None\ntry:\n l=os.lstat(p)\n if stat.S_ISREG(l.st_mode):\n  f=os.open(p,os.O_RDONLY|getattr(os,'O_NOFOLLOW',0)|getattr(os,'O_NONBLOCK',0))\n  with os.fdopen(f,'rb') as h:\n   s=os.fstat(h.fileno())\n   if stat.S_ISREG(s.st_mode) and s.st_size==e:\n    b=h.read(e+1)\nexcept OSError:\n pass\nif b is not None and len(b)==e and hashlib.sha256(b).hexdigest()=='5f733bcc0d67299b9cdb253a612b5eaded7acefbf5e87662d1ec1d84e83a007b':\n sys.argv=[p,*sys.argv[1:]]\n exec(compile(b,p,'exec'),{'__name__':'__main__','__file__':p,'__package__':None,'__cached__':None})\nelse:\n print('{}')\" hook stop",
+            "command": "python3 -c 'import hashlib,os,stat,sys\nd=os.environ.get('\"'\"'PLUGIN_DATA'\"'\"')\np=os.path.join(d,'\"'\"'runtime'\"'\"','\"'\"'acgm_codex.py'\"'\"') if d else '\"'\"''\"'\"'\ne=183041\nb=None\ntry:\n l=os.lstat(p)\n if stat.S_ISREG(l.st_mode):\n  f=os.open(p,os.O_RDONLY|getattr(os,'\"'\"'O_NOFOLLOW'\"'\"',0)|getattr(os,'\"'\"'O_NONBLOCK'\"'\"',0))\n  with os.fdopen(f,'\"'\"'rb'\"'\"') as h:\n   s=os.fstat(h.fileno())\n   if stat.S_ISREG(s.st_mode) and s.st_size==e:\n    b=h.read(e+1)\nexcept OSError:\n pass\nif b is not None and len(b)==e and hashlib.sha256(b).hexdigest()=='\"'\"'5ca58ded6cb39292a2761c18fe1180dd4bc51ccd28260ad25c12a9cc8868edb6'\"'\"':\n sys.argv=[p,*sys.argv[1:]]\n exec(compile(b,p,'\"'\"'exec'\"'\"'),{'\"'\"'__name__'\"'\"':'\"'\"'__main__'\"'\"','\"'\"'__file__'\"'\"':p,'\"'\"'__package__'\"'\"':None,'\"'\"'__cached__'\"'\"':None})\nelse:\n print('\"'\"'{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"ACGM runtime integrity unavailable\"}}'\"'\"' if sys.argv[-1]=='\"'\"'pre-tool'\"'\"' else '\"'\"'{}'\"'\"')' hook stop",
             "timeout": 10,
             "statusMessage": "ACGM is closing the local governance record"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -c 'import hashlib,json,os,stat,sys\nparts=[]\ntry:\n for name,size,digest in [('\"'\"'session_guardian.py'\"'\"', 16571, '\"'\"'38adb0fb34c804c73e5398870ae196d86ac330b1d1fc3cabc853dd5e7ef40616'\"'\"'), ('\"'\"'session_hooks.py'\"'\"', 14080, '\"'\"'cfba1bf25e901d86a53e11a2977775c668ae9c71a81047f116dc2e682decc178'\"'\"')]:\n  p=os.path.join(os.environ['\"'\"'PLUGIN_ROOT'\"'\"'],'\"'\"'scripts'\"'\"',name)\n  fd=os.open(p,os.O_RDONLY|getattr(os,'\"'\"'O_NOFOLLOW'\"'\"',0)|getattr(os,'\"'\"'O_NONBLOCK'\"'\"',0))\n  with os.fdopen(fd,'\"'\"'rb'\"'\"') as f:\n   if not stat.S_ISREG(os.fstat(f.fileno()).st_mode): raise ValueError('\"'\"'Unsafe runtime'\"'\"')\n   b=f.read(size+1)\n  if len(b)!=size or hashlib.sha256(b).hexdigest()!=digest: raise ValueError('\"'\"'Runtime mismatch'\"'\"')\n  parts.append(b.decode())\nexcept Exception:\n try: event=json.load(sys.stdin).get('\"'\"'hook_event_name'\"'\"')\n except Exception: event='\"'\"'PreToolUse'\"'\"'\n reason='\"'\"'ACGM Session Guardian runtime integrity unavailable.'\"'\"'\n result={'\"'\"'continue'\"'\"':False,'\"'\"'stopReason'\"'\"':reason}\n if event=='\"'\"'PreToolUse'\"'\"': result={'\"'\"'hookSpecificOutput'\"'\"':{'\"'\"'hookEventName'\"'\"':event,'\"'\"'permissionDecision'\"'\"':'\"'\"'deny'\"'\"','\"'\"'permissionDecisionReason'\"'\"':reason}}\n if event=='\"'\"'UserPromptSubmit'\"'\"': result={'\"'\"'decision'\"'\"':'\"'\"'block'\"'\"','\"'\"'reason'\"'\"':reason}\n print(json.dumps(result));sys.exit(0)\ncode=parts[0].rsplit('\"'\"'\\nif __name__ == \"__main__\":'\"'\"',1)[0]+'\"'\"'\\n'\"'\"'+parts[1]+'\"'\"'\\nhook_main()\\n'\"'\"'\nexec(compile(code,p,'\"'\"'exec'\"'\"'),{'\"'\"'__name__'\"'\"':'\"'\"'acgm_session_hooks'\"'\"','\"'\"'__file__'\"'\"':p})'",
+            "timeout": 10,
+            "statusMessage": "ACGM 会话缓冲检查"
+          }
+        ]
+      }
+    ],
+    "Interrupt": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -c 'import hashlib,os,stat,sys\nd=os.environ.get('\"'\"'PLUGIN_DATA'\"'\"')\np=os.path.join(d,'\"'\"'runtime'\"'\"','\"'\"'acgm_codex.py'\"'\"') if d else '\"'\"''\"'\"'\ne=183041\nb=None\ntry:\n l=os.lstat(p)\n if stat.S_ISREG(l.st_mode):\n  f=os.open(p,os.O_RDONLY|getattr(os,'\"'\"'O_NOFOLLOW'\"'\"',0)|getattr(os,'\"'\"'O_NONBLOCK'\"'\"',0))\n  with os.fdopen(f,'\"'\"'rb'\"'\"') as h:\n   s=os.fstat(h.fileno())\n   if stat.S_ISREG(s.st_mode) and s.st_size==e:\n    b=h.read(e+1)\nexcept OSError:\n pass\nif b is not None and len(b)==e and hashlib.sha256(b).hexdigest()=='\"'\"'5ca58ded6cb39292a2761c18fe1180dd4bc51ccd28260ad25c12a9cc8868edb6'\"'\"':\n sys.argv=[p,*sys.argv[1:]]\n exec(compile(b,p,'\"'\"'exec'\"'\"'),{'\"'\"'__name__'\"'\"':'\"'\"'__main__'\"'\"','\"'\"'__file__'\"'\"':p,'\"'\"'__package__'\"'\"':None,'\"'\"'__cached__'\"'\"':None})\nelse:\n print('\"'\"'{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"ACGM runtime integrity unavailable\"}}'\"'\"' if sys.argv[-1]=='\"'\"'pre-tool'\"'\"' else '\"'\"'{}'\"'\"')' hook interrupt",
+            "timeout": 3,
+            "statusMessage": "ACGM is closing the local governance record"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -c 'import hashlib,json,os,stat,sys\nparts=[]\ntry:\n for name,size,digest in [('\"'\"'session_guardian.py'\"'\"', 16571, '\"'\"'38adb0fb34c804c73e5398870ae196d86ac330b1d1fc3cabc853dd5e7ef40616'\"'\"'), ('\"'\"'session_hooks.py'\"'\"', 14080, '\"'\"'cfba1bf25e901d86a53e11a2977775c668ae9c71a81047f116dc2e682decc178'\"'\"')]:\n  p=os.path.join(os.environ['\"'\"'PLUGIN_ROOT'\"'\"'],'\"'\"'scripts'\"'\"',name)\n  fd=os.open(p,os.O_RDONLY|getattr(os,'\"'\"'O_NOFOLLOW'\"'\"',0)|getattr(os,'\"'\"'O_NONBLOCK'\"'\"',0))\n  with os.fdopen(fd,'\"'\"'rb'\"'\"') as f:\n   if not stat.S_ISREG(os.fstat(f.fileno()).st_mode): raise ValueError('\"'\"'Unsafe runtime'\"'\"')\n   b=f.read(size+1)\n  if len(b)!=size or hashlib.sha256(b).hexdigest()!=digest: raise ValueError('\"'\"'Runtime mismatch'\"'\"')\n  parts.append(b.decode())\nexcept Exception:\n try: event=json.load(sys.stdin).get('\"'\"'hook_event_name'\"'\"')\n except Exception: event='\"'\"'PreToolUse'\"'\"'\n reason='\"'\"'ACGM Session Guardian runtime integrity unavailable.'\"'\"'\n result={'\"'\"'continue'\"'\"':False,'\"'\"'stopReason'\"'\"':reason}\n if event=='\"'\"'PreToolUse'\"'\"': result={'\"'\"'hookSpecificOutput'\"'\"':{'\"'\"'hookEventName'\"'\"':event,'\"'\"'permissionDecision'\"'\"':'\"'\"'deny'\"'\"','\"'\"'permissionDecisionReason'\"'\"':reason}}\n if event=='\"'\"'UserPromptSubmit'\"'\"': result={'\"'\"'decision'\"'\"':'\"'\"'block'\"'\"','\"'\"'reason'\"'\"':reason}\n print(json.dumps(result));sys.exit(0)\ncode=parts[0].rsplit('\"'\"'\\nif __name__ == \"__main__\":'\"'\"',1)[0]+'\"'\"'\\n'\"'\"'+parts[1]+'\"'\"'\\nhook_main()\\n'\"'\"'\nexec(compile(code,p,'\"'\"'exec'\"'\"'),{'\"'\"'__name__'\"'\"':'\"'\"'acgm_session_hooks'\"'\"','\"'\"'__file__'\"'\"':p})'",
+            "timeout": 10,
+            "statusMessage": "ACGM 会话缓冲检查"
           }
         ]
       }

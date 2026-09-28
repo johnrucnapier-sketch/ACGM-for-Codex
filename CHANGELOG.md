@@ -1,5 +1,69 @@
 # Changelog
 
+## 版本概览
+
+以下摘要依据本仓库历史条目、Git 标签和开发交接资料整理。
+“候选”不等于已经安装或通过真实用户验收；既有标签内容不会被本轮修改覆盖。
+
+| 版本 / 阶段 | 主要解决的问题 |
+|---|---|
+| 0.4.0-rc.1（2026-09-28） | 普通任务安静启动；项目记录变化改为按需提醒；保留策略与危险操作边界；验证当前 Codex 的 Guardian 生命周期 |
+| 0.3.0-rc.1（2026-09-12） | 用决策记录保留长期项目的重要理由与未决问题；减少多仓库重复提醒 |
+| 0.2.0-rc.4（2026-07-20） | 修复 Constitution 保护误伤普通读取和无关写入的问题 |
+| 0.2.0-rc.3（2026-07-19） | 固定可信 Hook runtime 的位置与摘要，处理缓存清理和重启后的信任边界 |
+| 0.2.0-rc.2（2026-07-19） | 修复真实插件升级、旧任务 Hook 与中断升级恢复路径 |
+| 0.2.0-rc.1（2026-07-17） | 一次授权的安装、初始化和激活；用精确计划防止错误升级或覆盖项目资料 |
+| 0.1.0-rc.4（2026-07-15） | 兼容平台暂未提供候选版本号的枚举结果，保留独立身份验证 |
+| 0.1.0-rc.3（2026-07-15） | 根据真实 Codex 返回修正 marketplace / plugin 的验证协议 |
+| 0.1.0-rc.2（2026-07-15） | 建立标签固定的公开安装入口、包校验和保守迁移边界 |
+| 0.1.0-rc.1（未发布） | 建立独立 Codex 插件、项目健康状态、evidence gate、验证义务及本机账本 |
+
+
+## 0.4.0-rc.1 — lean workflow and project continuity (2026-09-28)
+
+### 本阶段的目的与取舍
+
+- 减少 Astra 普通短任务的例行治理负担，不把“每次重复检查”当作安全本身。
+- 健康默认/Light 入口不再注入例行说明；恢复和 doctor 按实际不确定性触发。
+- 决策/快照目录中的普通 Markdown 记录变化改为启动/恢复时的一条建议提醒；
+  不自动批准记录、不改变已接受基线，也不要求只为更新项目笔记重新激活。
+- Constitution、AGENTS、scope、实际策略文件、目录结构异常仍保留硬边界。
+  未完成验证仍跨任务保留；没有减少现有危险操作 Gate。
+- 撤回没有证明实际收益的删除放行例外；不新增全局 warning-only 开关。
+- 从当前 Codex 0.158.0-alpha.2.1 原生临时会话采集用量格式，补充 reader
+  回归和原生生命周期验收；未知版本继续拒绝，不更改 Guardian 阈值。
+- 不把短任务小样本当作稳定 token/耗时收益或长期语义恢复已验收。
+
+发行前验收：248 项源码测试；当前 CLI 的 24 个原生场景、22 条断言通过。
+详见 [阶段验收与安装边界](docs/LEAN-WORKFLOW-ACCEPTANCE.md)。
+
+### 此开发分支前序工作
+
+
+- Add a thin Light/Standard/Strict workflow resolver, baseline-protected optional
+  project choice and session-scoped fixed-check failure escalation. Preserve all
+  mechanical Gate requirements and independent Guardian behavior.
+- Reduce repeated grounding and routine gate-card guidance for ordinary work.
+- Fail closed on broken/drifted policy and pre-tool runtime/integrity errors.
+- Bind retry arms to the complete command, and inspect compound shell segments.
+- Separate requests/results, preserve unknown outcomes, and reconcile native
+  completions with the existing exact-session reader. Claimed verification no
+  longer substitutes for the fixed check.
+- Integrate the existing optional Guardian without changing thresholds or UX;
+  fix nested request-state persistence and preserve full blocked prompt text.
+- Share Hook/dashboard budget calculation; add regression and native fixture tests.
+- Include Guardian runtime, dashboard and handoff assets in the development
+  snapshot allowlist; verify the copied hash-bound Guardian loader.
+
+### Release and upgrade
+
+- Publish a new immutable `v0.4.0-rc.1` candidate; preserve all older tags.
+- Verify the exact official `0.3.0-rc.1` predecessor and preserve private data
+  during the existing digest-bound upgrade flow.
+- Resolve CLI guidance from the current plugin, avoiding stale global wrappers.
+- Desktop restart and personal Hook review remain separate from local installation.
+
+
 ## 0.3.0-rc.1 — 2026-09-12 release candidate
 
 - Adapt the decision-ledger workflow from ACGM for Claude Code 0.9.2: preserve

@@ -1,6 +1,6 @@
 ---
 name: session-grounding
-description: Re-ground a Codex task in verified project state and preserve evidence boundaries. Use at the start of a new task, after context compaction, during recovery or handoff, when resuming a long-running project, or whenever the cwd, repository, branch, worktree, transcript, or remembered state may be wrong or stale.
+description: Re-ground a Codex task in verified project state and preserve evidence boundaries. Use for recovery after compaction or handoff, resuming a long-running project, or a concrete uncertainty about project identity or remembered state. Do not invoke solely because an ordinary short task has started.
 ---
 
 # Session Grounding
@@ -9,25 +9,36 @@ Reconstruct the working baseline before drawing conclusions or changing files.
 
 ## Resolve the CLI
 
-Prefer `acgm-codex`. If unavailable, resolve the absolute directory containing this installed `SKILL.md`, ascend two levels to the plugin root, and run `<plugin-root>/bin/acgm-codex`. Never assume the project cwd is the plugin directory.
+Resolve the absolute directory containing this installed `SKILL.md`, ascend two levels, and use `<plugin-root>/bin/acgm-codex`. A global `acgm-codex` may point to an older installation. Do not derive the plugin root from the project cwd.
 
 ## Verify current state
 
-1. Run:
+Recover only the facts needed for the current work. Absence of a Hook workflow
+message is not a request for Standard recovery and does not prove Hooks ran.
+Honor explicit project requirements, outstanding obligations and incident notices.
+Do not run `policy` or `doctor` merely to choose how much ceremony to perform.
 
-   ```sh
-   pwd -P
-   git rev-parse --show-toplevel
-   git branch --show-current
-   git rev-parse HEAD
-   git worktree list --porcelain
-   git status --short --branch
-   ```
+1. Establish the intended root, branch/worktree and relevant changes when these
+   are uncertain. Batch relevant Git reads; reuse current evidence rather than
+   mechanically running every identity command again.
+2. Read applicable project rules and the snapshot, decisions or unfinished work
+   relevant to the resumed task. Do not reload every historical record. Open
+   questions and draft claims are not accepted decisions.
+3. Run `acgm-codex doctor <exact-root>` when activation/integrity is uncertain,
+   reported unhealthy, or installation verification is requested. A healthy
+   project does not need a doctor call at every task entry.
+4. Reconcile material historical claims with current files. Report missing
+   evidence rather than inventing it. Restore unresolved verification obligations
+   across sessions; a new session does not discharge them.
 
-2. Confirm the intended project, Git root, branch, and worktree before reading or writing project files. Stop if the cwd is wrong.
-3. Run `acgm-codex doctor <verified-git-root>` through the resolved entry point.
-4. Read the Constitution and root rules, then follow their governance pointers; inspect the relevant snapshot, ADRs, and existing `.governance/OPEN_THREADS.md` and claims. Open questions and unconfirmed drafts are not accepted decisions. Do not guess paths or assume that the newest timestamp contains the governing decision.
-5. Reconcile claims with current files and Git history. Treat a missing artifact as missing evidence, not permission to invent it.
+Before service, deployment or destructive operations, use `truth-first` for the
+exact target, authorization, recovery conditions and independent postconditions.
+Resolve unknown targets or LOCAL/REMOTE conflicts before the affected mutation.
+Existing mechanical Gates and native permissions apply regardless of workflow
+advice. Guardian is independent. Never edit policy or reactivate governance to
+reduce checks. Explicitly requested workflow assistance remains applicable;
+`acgm-codex policy --project <exact-root> --risk <risk> --json` is available to
+explain it, not a prerequisite for ordinary work.
 
 ## Preserve the evidence hierarchy
 
@@ -44,7 +55,9 @@ Treat current code and Git state as current facts. Treat transcripts and memory 
 
 ## Publish the grounding note
 
-State concisely:
+Report material findings and uncertainty concisely; no separate grounding note
+is needed when the facts are already established. At recovery or when state is
+ambiguous, cover only the relevant items:
 
 1. verified project path, branch, worktree, HEAD, and cleanliness;
 2. latest relevant snapshot and ADR;
@@ -53,7 +66,8 @@ State concisely:
 5. unresolved evidence gaps;
 6. next safe action.
 
-After compaction or handoff, restate this grounding note before continuing. Re-run the checks when repository state may have changed.
+After compaction or handoff, restore the relevant facts before continuing and
+report changes or gaps. Re-run checks when repository state may have changed.
 
 Continue within the user's existing authorization. Grounding does not require a
 new approval ritual; ask only when a material uncertainty changes the authorized

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -16,6 +18,30 @@ from scripts import install_local  # noqa: E402
 
 
 class LocalInstallerTests(unittest.TestCase):
+    def test_snapshot_contains_integrated_guardian_and_all_discovered_skills(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            target = Path(temporary) / "snapshot"
+            install_local.install_snapshot(ROOT, target, force=False)
+            for relative in ("bin/acgm-session", "scripts/session_guardian.py",
+                             "scripts/session_hooks.py", "scripts/session_dashboard.py",
+                             "assets/session-dashboard/index.html", "docs/WORKFLOW-PROFILES.md"):
+                self.assertEqual((target / relative).read_bytes(), (ROOT / relative).read_bytes())
+            self.assertEqual(
+                {p.parent.name for p in (target / "skills").glob("*/SKILL.md")},
+                {p.parent.name for p in (ROOT / "skills").glob("*/SKILL.md")},
+            )
+            # Execute the copied Guardian's hash-bound loader. It must return
+            # normally for an unconfigured directory, not fail due to absent code.
+            groups = json.loads((target / "hooks/hooks.json").read_text())["hooks"]["SessionStart"]
+            guardian = next(g["hooks"][0] for g in groups
+                            if g["hooks"][0].get("statusMessage") == "ACGM 会话缓冲检查")
+            result = subprocess.run(shlex.split(guardian["command"]),
+                env={**os.environ, "PLUGIN_ROOT": str(target)}, cwd=temporary,
+                input=json.dumps({"cwd": temporary, "hook_event_name": "SessionStart"}),
+                capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(result.stdout), {})
+
     def make_valid_source(self, root: Path, *, version: str = "1.2.3") -> Path:
         source = root / "source"
         for relative_name in install_local.PUBLISHED_FILES:

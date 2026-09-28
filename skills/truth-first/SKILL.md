@@ -1,6 +1,6 @@
 ---
 name: truth-first
-description: Prepare, authorize, execute, and verify high-risk or state-sensitive changes with explicit evidence. Use before irreversible or destructive actions, external-state mutations, releases, pushes, deployments, migrations, credential or permission changes, or any action whose safety depends on the current repository or service state.
+description: Prepare, authorize, execute, and verify high-risk or state-sensitive changes with explicit evidence. Use before irreversible or destructive actions, external-state mutations, releases, pushes, deployments, migrations, credential or permission changes, or material target/authorization uncertainty. Ordinary local reversible edits and read-only analysis do not require this skill solely because they use tools.
 ---
 
 # Truth First
@@ -9,11 +9,22 @@ Separate evidence collection, mutation, and verification so that assumptions can
 
 ## Resolve the CLI
 
-Prefer `acgm-codex`. If unavailable, resolve the absolute directory containing this installed `SKILL.md`, ascend two levels to the plugin root, and run `<plugin-root>/bin/acgm-codex`. Never resolve the plugin from the project cwd.
+Resolve the absolute directory containing this installed `SKILL.md`, ascend two levels, and use `<plugin-root>/bin/acgm-codex`. A global `acgm-codex` may point to an older installation. Do not derive the plugin root from the project cwd.
 
 ## Build the gate card
 
-Before mutation, write down all four items:
+Service operations and destructive changes have a Strict workflow floor,
+independent of model capability. All existing mechanical Gate requirements below
+remain mandatory in every profile. A profile never grants authorization, weakens
+native permissions, or proves an action safe. Unknown targets, LOCAL/REMOTE
+conflicts and ambiguous authority require resolution before execution, not just
+a stronger profile. Guardian remains an independent lifecycle choice.
+
+For ordinary reversible work, retain the same target/evidence/verification
+principles without requiring a separate gate card or repeated approval. Reuse
+current evidence and existing authorization when they cover the exact action.
+For high-risk or materially state-sensitive work, make these four items explicit
+(reuse an existing still-valid card rather than repeating it):
 
 1. **Target:** identify the exact repository, worktree, branch, file, resource, account, or environment and the intended action.
 2. **Current state:** collect fresh, read-only evidence at the source of truth. Include timestamps or revisions when state can drift.
@@ -45,9 +56,12 @@ The personal Codex hook is a deterministic guardrail, not a complete safety boun
 
 ## Discharge the verification obligation
 
-Every high-risk action creates a verification obligation. Complete it before calling the task done:
+Every high-risk action needs semantic post-verification. The runtime creates
+mechanical obligations only for covered actions it observes; do not invent an
+obligation ID for other operations. Complete applicable verification before
+calling the task done:
 
-1. Run the exact `acgm-codex gate verify --event <obligation-id> --category <category>` command supplied by the Hook, with the same optional `--target` rule.
+1. When the Hook supplies a mechanical obligation, run the exact `acgm-codex gate verify --event <obligation-id> --category <category>` command supplied by the Hook, with the same optional `--target` rule.
 2. Compare the fixed check output with the stated postcondition. A zero exit closes only the runtime's mechanical obligation.
 3. Check for partial success, unexpected collateral changes, and rollback viability with additional authoritative evidence when needed.
 4. Record whether the action is verified, failed, ambiguous, or rolled back.

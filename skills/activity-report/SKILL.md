@@ -9,7 +9,7 @@ Report what the evidence supports without turning routine activity into an inven
 
 ## Resolve the CLI
 
-Prefer `acgm-codex`. If unavailable, resolve the absolute directory containing this installed `SKILL.md`, ascend two levels to the plugin root, and run `<plugin-root>/bin/acgm-codex`. Never assume the project cwd is the plugin directory.
+Resolve the absolute directory containing this installed `SKILL.md`, ascend two levels, and use `<plugin-root>/bin/acgm-codex`. A global `acgm-codex` may point to an older installation. Do not derive the plugin root from the project cwd.
 
 ## Inspect project health
 
@@ -52,3 +52,14 @@ Treat the personal Codex hook as a deterministic guardrail, not a complete safet
 3. Treat the output only as a local, redacted preview. Inspect it for source code, credentials, tokens, cookies, personal data, private paths, proprietary names, transcript content, and identifying metadata.
 4. Require human review and explicit approval before sharing or publishing it. Never upload, send, commit, or publish a preview automatically.
 5. If redaction cannot be verified, keep the case local and report the gap.
+
+## Execution evidence
+
+A requested tool call, consumed retry gate, or observed permission boundary is
+not execution. Current Bash PostToolUse may contain only plain output text;
+never infer success or exit status from that text. Use `acgm-session audit` for
+read-only, exact-session native completion reconciliation. Report unmatched
+requests as unknown. Keep ACGM decisions and native sandbox/approval decisions
+separate. `resolve --status verified/resolved/unresolved` records an annotation;
+it does not replace the fixed verification check. Explicit human_override and
+false_positive dispositions remain separate from mechanical verification.

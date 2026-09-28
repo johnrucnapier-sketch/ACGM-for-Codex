@@ -2,6 +2,10 @@
 
 **Drift control for long-horizon agent coding.**
 
+The development candidate adds [workflow profiles](docs/WORKFLOW-PROFILES.md):
+Light / Standard / Strict tune grounding and guidance while preserving every existing
+Gate. Guardian remains independent. This is not a released or installed upgrade.
+
 ACGM for Codex is an independent Codex adapter for Agent Coding Governance
 Methodology. It turns implementation, cognitive, structural-placement, and scope
 drift into visible project health, narrow deterministic guardrails, and a
@@ -9,7 +13,7 @@ source-minimized local Event Ledger.
 
 [中文](README.md)
 
-> **Release candidate: `0.3.0-rc.1`.** Verify the exact GitHub tag before installation.
+> **Release candidate: `0.4.0-rc.1`.** Verify the exact GitHub tag before installation.
 > Installed package state and current-task activation are separate checks. This is not a stable
 > release. Automated tests can validate the package and runtime. Automatic Hook
 > behavior is not considered verified until Hook trust and real tool-call E2E pass
@@ -86,7 +90,7 @@ The Agent clones the exact tag and runs:
 
 ```bash
 ACGM_SOURCE="$(mktemp -d)/ACGM-for-Codex"
-git clone --branch v0.3.0-rc.1 --depth 1 \
+git clone --branch v0.4.0-rc.1 --depth 1 \
   https://github.com/johnrucnapier-sketch/ACGM-for-Codex.git "$ACGM_SOURCE"
 python3 "$ACGM_SOURCE/scripts/quickstart.py" \
   --project /absolute/path/to/the/exact/project --dry-run --json
@@ -112,11 +116,11 @@ and identity, existing managed-file hashes, and every proposed byte. Any changed
 fact invalidates the grant before apply.
 
 For a fresh install, bootstrap invokes `codex plugin marketplace add
-johnrucnapier-sketch/ACGM-for-Codex --ref v0.3.0-rc.1 --json` and then `codex
+johnrucnapier-sketch/ACGM-for-Codex --ref v0.4.0-rc.1 --json` and then `codex
 plugin add acgm-codex@acgm-codex --json`. It independently verifies the exact
 marketplace source/ref, plugin name/version/enabled state, and cached package
 bytes. The sole automatic plugin-upgrade exception is one enabled, user-scope
-official `0.1.0-rc.2` through `0.1.0-rc.4` or `0.2.0-rc.1` through `0.2.0-rc.4` whose source, ref, policy,
+official `0.1.0-rc.2` through `0.1.0-rc.4` or `0.2.0-rc.1` through `0.2.0-rc.4` or `0.3.0-rc.1` whose source, ref, policy,
 marketplace snapshot, package bytes, and sole cache entry all verify. That
 digest explicitly binds marketplace remove, exact-ref marketplace add, and
 plugin add. A failed external mutation is reported as partial/recheck state; it
@@ -206,7 +210,7 @@ those exact bytes; the user does not have to type a Constitution. Existing
 substantive policy is preserved. Version-only adapter drift with an otherwise
 matching baseline is upgraded in the same authorization only from the explicit
 compatible `0.1.0-rc.2` through `0.1.0-rc.4` or `0.2.0-rc.1` through
-`0.2.0-rc.4` project-adapter set; an unknown or newer state is never
+`0.2.0-rc.4` and `0.3.0-rc.1` project-adapter set; an unknown or newer state is never
 automatically downgraded. A healthy manually activated project may adopt its
 missing standard decision/snapshot while preserving the activation id. Unknown
 receipts, concurrent Git/index changes, unknown placeholders, symlinks,
@@ -273,3 +277,7 @@ Run the platform checklist in
 
 Mechanical code is MIT licensed; methodology prose and skill bodies are
 CC-BY-4.0. See [LICENSING.md](LICENSING.md).
+
+## Optional Session Guardian
+
+Release 0.4.0-rc.1 registers the existing Session Guardian in the ACGM plugin, disabled unless a project opts in. It preserves the 35%/20% notices, buffered handoff gate, and one-turn continuation. Dashboard polling makes no model requests. Disable an existing standalone companion and preserve its state before switching; do not run both for one project. See the [module guide](docs/SESSION-GUARDIAN.md) and [hardening report](docs/HARDENING-2026-09-16.md).
