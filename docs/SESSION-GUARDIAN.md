@@ -45,9 +45,11 @@ Locally generated 0.154.0-alpha.6.2 app-server schemas distinguish `last` from
 `total` token usage and expose `modelContextWindow`. Read-only inspection of the
 active local session confirmed `session_meta`, `event_msg/token_count` with
 `last_token_usage` and `model_context_window`, and `token_usage_record/usage`.
-The latter advances more recently than some token-count events. The prototype
-supports only this explicitly verified CLI version. Other versions report UNKNOWN
-until their schema is independently checked. No internal schema stability claim.
+The latter advances more recently than some token-count events. The reader also supports `0.158.0-alpha.2.1`, whose native temporary-session
+records were captured on 2026-09-28 and retained as a sanitized regression fixture.
+That fixture confirms latest usage 120 versus cumulative usage 240 and an observed
+475000-token effective window. Other versions report UNKNOWN until independently
+checked. This is version-bounded compatibility, not an internal schema stability claim.
 
 The implemented fallback resolves only the explicit thread ID (or CODEX_THREAD_ID)
 through SQLite in read-only mode, then verifies rollout metadata ID, cwd and CLI

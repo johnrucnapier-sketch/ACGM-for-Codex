@@ -166,13 +166,15 @@ check inside the ACGM runtime before arming one retry. A gate arm never
 constitutes user authorization and never bypasses Codex's own permission
 system.
 
-After an allowed high-risk action, run the exact `acgm-codex gate verify
---event ... --category ...` command described by the hook before ending the
-turn. Do not edit `CONSTITUTION.md` through an automated tool; prepare a
+When the hook supplies a verification obligation, run its exact
+`acgm-codex gate verify --event ... --category ...` command before ending the
+turn. Verify the actual result independently; an absent obligation does not
+prove success. Do not edit `CONSTITUTION.md` through an automated tool; prepare a
 proposal for human review instead.
 
-Use `acgm-codex doctor --strict` to verify project activation and observed hook
-execution. Use `acgm-codex report` for the privacy-minimized activity ledger.
+Use `acgm-codex doctor --strict` when activation or hook integrity is uncertain,
+or installation verification is requested; it is not a routine task-entry step.
+Use `acgm-codex report` for unresolved obligations or a requested activity audit.
 """
 
 SCOPE_TEMPLATE = """# [PLACEHOLDER] Replace the example scope after human review.
@@ -990,11 +992,13 @@ def _governance_directory_files(root: Path, name: str) -> list[Path]:
 
 
 def _directory_baseline(root: Path, name: str) -> dict[str, str]:
-    directory = root / name
-    return {
-        path.relative_to(directory).as_posix(): _sha256(path)
-        for path in _governance_directory_files(root, name)
-    }
+    # Reuse the anchored regular-file scanner: record changes must not turn
+    # symlinks, special files or unreadable content into advisory-only changes.
+    descriptor = os.open(root / name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        return _directory_baseline_at(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 def _component_baseline(root: Path) -> dict[str, Any]:
@@ -1049,6 +1053,7 @@ def _project_status(root: Path) -> dict[str, Any]:
         "missing": missing,
         "placeholders": placeholders,
         "drift": [],
+        "record_changes": [],
     }
     if not path.exists():
         return result
@@ -1105,9 +1110,14 @@ def _project_status(root: Path) -> dict[str, Any]:
         else:
             try:
                 current_directory = _directory_baseline(root, name)
-                if current_directory != expected_directories[name]:
+                expected_directory = expected_directories[name]
+                changed = {p for p in current_directory.keys() | expected_directory.keys()
+                           if current_directory.get(p) != expected_directory.get(p)}
+                if any(not p.endswith(".md") for p in changed):
                     drift.append(name + ":changed")
-            except OSError:
+                if any(p.endswith(".md") for p in changed):
+                    result["record_changes"].append(name + ":changed")
+            except (OSError, RuntimeProblem):
                 drift.append(name + ":unreadable")
     if missing or placeholders:
         for name in placeholders:
@@ -2207,7 +2217,8 @@ def _hook_session_like(
 ) -> dict[str, Any]:
     official = HOOK_NAMES[dispatch]
     root_note = f" ACGM resolved the actual project root as `{root}`."
-    unresolved = _open_obligations(_project_events(root))
+    events = _project_events(root)
+    unresolved = _open_obligations(events)
     obligation_note = (
         f" {len(unresolved)} earlier verification obligation(s) remain unresolved; "
         "run `acgm-codex report`."
@@ -2215,18 +2226,26 @@ def _hook_session_like(
         else ""
     )
     if status["state"] == GOVERNED:
-        policy = _workflow_policy(root, risk="read-only", session=payload.get("session_id"))
+        policy = _workflow_policy(root, risk="read-only", session=payload.get("session_id"),
+                                  events=events)
+        # Preserve reviewed assistance settings and incident recovery. A healthy
+        # default project needs no startup workflow announcement or recovery ritual.
+        explicit_assistance = (policy["reasons"].get("project") in {"standard", "strict"}
+                               or policy["capability"] in {"general", "limited"})
+        notices = []
+        if status.get("record_changes"):
+            notices.append("Project decision/snapshot records changed since activation. "
+                           "Review only records relevant to this task when needed; "
+                           "changed text is not new authorization. No reactivation is required for records alone.")
+        if explicit_assistance or policy["escalated"]:
+            notices.append(f"Initial workflow profile: {policy['profile']}. {policy['guidance']}")
+        if unresolved:
+            notices.append(obligation_note.strip())
+        if not notices:
+            return {}
         return _hook_context(
             official,
-            "ACGM observed this Hook; project governance files match the activation baseline. "
-            f"Initial workflow profile: {policy['profile']}. {policy['guidance']} "
-            "Apply the service/destructive Strict floor before such operations; unknown risk "
-            "requires at least Standard and clarification before external mutation. "
-            "Use session-grounding as needed; all existing Gate requirements remain mandatory. "
-            "Use decision-ledger for material decision threads; draft without interrupting work. "
-            "This event does not prove that other Hooks ran."
-            + root_note
-            + obligation_note,
+            " ".join(notices) + root_note,
         )
     if status["state"] in {DRIFTED, BROKEN}:
         result = _hook_context(
@@ -2238,6 +2257,8 @@ def _hook_session_like(
         )
         result["systemMessage"] = "ACGM Codex governance is drifted or broken."
         return result
+    if status["state"] == INSTALLED_NOT_BOOTSTRAPPED and not unresolved:
+        return {}
     return _hook_context(
         official,
         "ACGM Codex is installed but not active for this project. If the user requests "
@@ -4335,6 +4356,7 @@ def _doctor_payload(root: Path) -> dict[str, Any]:
         "missing": status["missing"],
         "placeholders": status["placeholders"],
         "drift": status["drift"],
+        "record_changes": status.get("record_changes", []),
         "hook": {
             "observed": hook_observed,
             "observed_for_current_version_and_activation": hook_observed,
@@ -4370,6 +4392,8 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
             print("placeholder: " + ", ".join(value["placeholders"]))
         if value["drift"]:
             print("drift: " + ", ".join(value["drift"]))
+        if value["record_changes"]:
+            print("record changes (advisory): " + ", ".join(value["record_changes"]))
     return 0 if value["healthy"] or not args.strict else 2
 
 

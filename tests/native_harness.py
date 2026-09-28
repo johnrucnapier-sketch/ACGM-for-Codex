@@ -44,7 +44,7 @@ def main():
             command=sequence.pop(0) if sequence else None
             if callable(command):command=command()
             if command is not None:
-                arguments=command if isinstance(command,dict) else {'cmd':command,'max_output_tokens':200,'yield_time_ms':1000}
+                arguments=command if isinstance(command,dict) else {'cmd':command,'max_output_tokens':200,'yield_time_ms':10000,'login':False}
                 item={'type':'function_call','id':f'fc_{counter}','call_id':f'call_{counter}','name':'exec_command','arguments':json.dumps(arguments)}
             else:
                 item={'type':'message','id':f'msg_{counter}','role':'assistant','content':[{'type':'output_text','text':'Synthetic fixture complete.'}]}
@@ -185,7 +185,11 @@ plugins = false
         escalated=run('profile-repeated-fixed-check-failure',
                       ['git -C '+shlex.quote(str(outside))+' reset --hard',failed_arm,failed_arm])
         run('profile-escalation-resume',['true'],resume=escalated)
-        run('profile-new-session-light',['true'])
+        ordinary=run('profile-new-session-light',['true'])
+        record=fixture.project/'.governance/decisions/continuity.md'
+        record.write_text('# Accepted project constraint\nKEEP_API; migration verification unfinished.\n')
+        run('records-resume', ['cat .governance/decisions/continuity.md'], resume=ordinary)
+        rows[-1]['record_intact']=record.read_text().endswith('migration verification unfinished.\n')
         policy=fixture.project/'.acgm/session-guardian.json'
         from test_session_hooks import POLICY
         policy.write_text(json.dumps(POLICY))
@@ -230,13 +234,14 @@ plugins = false
             'sandbox-block':not by_name['sandbox-block']['blocked_file_exists'],
             'approval-policy-deny':not by_name['approval-deny']['denied_file_exists'],
             'compound-deny':not completed('compound-deny'),
-            'light-selected':'light' in by_name['profile-light-read']['profiles_seen'],
+            'light-quiet':not by_name['profile-light-read']['profiles_seen'] and bool(completed('profile-light-read')),
             'light-destructive-deny':not completed('profile-light-destructive-deny'),
             'fixed-check-failures':sum(e.get('exit_code')==3 for e in completed('profile-repeated-fixed-check-failure'))==2,
             'strict-after-resume':'strict' in by_name['profile-escalation-resume']['profiles_seen'],
-            'new-session-light':'light' in by_name['profile-new-session-light']['profiles_seen'],
+            'new-session-quiet':not by_name['profile-new-session-light']['profiles_seen'] and bool(completed('profile-new-session-light')),
+            'records-readable-on-resume':any(e.get('exit_code')==0 and 'KEEP_API' in e.get('aggregated_output','') for e in completed('records-resume')) and by_name['records-resume']['record_intact'],
             'escalation-recorded':sum(e['kind']=='policy-escalated' for e in payload['ledger'])==1,
-            'light-with-guardian':'light' in by_name['low-context']['profiles_seen'] and bool(completed('low-context')),
+            'quiet-with-guardian':not by_name['low-context']['profiles_seen'] and bool(completed('low-context')),
             'continue-once':bool(completed('continue-once')),
             'next-prompt-blocked':by_name['next-prompt-blocked']['fixture_response_requests']==0,
             'handoff':bool(completed('handoff')),

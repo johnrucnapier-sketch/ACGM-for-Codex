@@ -1,6 +1,6 @@
 ---
 name: truth-first
-description: Prepare, authorize, execute, and verify high-risk or state-sensitive changes with explicit evidence. Use before irreversible or destructive actions, external-state mutations, releases, pushes, deployments, migrations, credential or permission changes, or any action whose safety depends on the current repository or service state.
+description: Prepare, authorize, execute, and verify high-risk or state-sensitive changes with explicit evidence. Use before irreversible or destructive actions, external-state mutations, releases, pushes, deployments, migrations, credential or permission changes, or material target/authorization uncertainty. Ordinary local reversible edits and read-only analysis do not require this skill solely because they use tools.
 ---
 
 # Truth First
@@ -56,9 +56,12 @@ The personal Codex hook is a deterministic guardrail, not a complete safety boun
 
 ## Discharge the verification obligation
 
-Every high-risk action creates a verification obligation. Complete it before calling the task done:
+Every high-risk action needs semantic post-verification. The runtime creates
+mechanical obligations only for covered actions it observes; do not invent an
+obligation ID for other operations. Complete applicable verification before
+calling the task done:
 
-1. Run the exact `acgm-codex gate verify --event <obligation-id> --category <category>` command supplied by the Hook, with the same optional `--target` rule.
+1. When the Hook supplies a mechanical obligation, run the exact `acgm-codex gate verify --event <obligation-id> --category <category>` command supplied by the Hook, with the same optional `--target` rule.
 2. Compare the fixed check output with the stated postcondition. A zero exit closes only the runtime's mechanical obligation.
 3. Check for partial success, unexpected collateral changes, and rollback viability with additional authoritative evidence when needed.
 4. Record whether the action is verified, failed, ambiguous, or rolled back.

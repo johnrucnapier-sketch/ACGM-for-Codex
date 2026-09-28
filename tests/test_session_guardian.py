@@ -38,6 +38,19 @@ class SessionGuardianTests(unittest.TestCase):
         self.reader.poll(self.path)
         return self.reader.status(now=NOW)
 
+    def test_current_cli_captured_metrics_use_last_response(self):
+        # Captured from a native 0.158 fixed-Responses session, not hand-invented schema.
+        records = json.loads((Path(__file__).parent / 'fixtures/guardian-0.158-metrics.json').read_text())
+        records[0]['payload']['cwd'] = str(self.root)
+        self.path.write_text(''.join(json.dumps(r) + '\n' for r in records))
+        reader = G.RolloutReader('fixture', self.root)
+        reader.poll(self.path)
+        result = reader.status(now=G.timestamp(records[-1]['timestamp']))
+        self.assertEqual(result['state'], 'NORMAL')
+        self.assertEqual(result['context_used'], 120)
+        self.assertEqual(result['context_window'], 475000)
+        self.assertNotEqual(result['context_used'], records[-1]['payload']['info']['total_token_usage']['total_tokens'])
+
     def test_thresholds_use_last_response_not_cumulative(self):
         for used, expected in [(200, "NORMAL"), (700, "CAUTION"), (820, "CLOSING"), (930, "EMERGENCY")]:
             self.append(self.metric(used))

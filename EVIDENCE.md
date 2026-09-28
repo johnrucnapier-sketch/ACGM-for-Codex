@@ -262,3 +262,126 @@ the complete independent runtime evidence chain proves the exact candidate.
 - Running the runtime suite from that installed cache passed 70 tests.
 - These remain isolated installation and runtime-contract checks, not live
   desktop Hook trust, skill behavior acceptance, or a stable-release claim.
+
+## Quiet-entry candidate — 2026-09-26
+
+- Scope: suppress healthy default/Light startup guidance and inactive install
+  hints; narrow grounding/truth-first discovery; make stock doctor/report advice
+  conditional. Explicit assistance, obligations and unhealthy-state notices stay.
+- Legacy Profile configuration/resolver remains compatible. No new workflow mode,
+  capability database, state store or risk classifier was introduced.
+- No installed project or user configuration was changed. Historical A/B and clean
+  baseline results are frozen; the subsequent real-model check is recorded below.
+- Skills are still discoverable; reduced implicit invocation is an intended
+  behavior that requires fresh-session validation, not a deterministic guarantee.
+- Final source release contract passed: plugin, six skill validators, package
+  manifest, and 241 regression tests (164.707 seconds).
+- Native CLI 0.155.0-alpha.9 with fixed loopback Responses and temporary
+  CODEX_HOME passed quiet-entry, explicit escalation/resume, destructive denial,
+  fixed-check failure, native approval accept/decline and sandbox checks. This
+  harness uses invocation-only trust bypass for vetted fixture Hooks; it does
+  not establish desktop installation or user Hook trust acceptance.
+- The full native harness FAILED its Guardian lifecycle group: the unchanged
+  reader only accepts 0.154.0-alpha.6.2 and reports UNKNOWN on 0.155.0-alpha.9.
+  No allowed-version change was made. An incidental zero-request blocked-turn
+  assertion is not evidence that the intended Guardian stage worked. Resolve
+  version compatibility separately before claiming complete current-CLI E2E.
+- Local detailed results: `.acgm/workflow-quiet/release-final.json` and
+  `native-final.json`. Preliminary runs are not final acceptance: one observed
+  an in-progress manifest change; the final source was frozen for both reruns.
+
+## Quiet-entry real-model check — 2026-09-26
+
+- Four new Astra/max runs on CLI 0.155.0-alpha.9: T1/T2 Quiet and Clean, n=1
+  per combination; Guardian Off, unchanged native sandbox/approval, identical
+  business prompts and verified business-file hashes. No mid-run source tuning.
+- All tasks passed independent scope/test checks. Both bugfix regressions failed
+  against original source and passed after the fix. Quiet samples read no ACGM
+  skill body and made no doctor/policy/gate call, but still read governance files.
+- Quiet/Clean aggregate: 125,173/136,879 tokens, 16/20 primitive requests,
+  219.9/184.7 seconds. Fewer tokens but greater latency is not a stable efficiency
+  win; batching, cache, platform delays and tiny sample size limit inference.
+- Historical 0.154 groups are reference only; no new real-model R2/R3 acceptance.
+  Raw Hook UNKNOWN remains 7/9; native reconciliation is not asserted while the
+  Guardian reader rejects this CLI version. No installed-runtime upgrade.
+- Local report: `.acgm/workflow-quiet/real-model/REPORT.md`. User config and
+  candidate hashes unchanged during runs; temporary authentication copies removed.
+
+## Bounded advisory experiment — 2026-09-26 (withdrawn)
+
+Historical results below describe a superseded candidate, not current behavior.
+The production exception and its configuration fields were subsequently removed.
+
+- Optional accepted-policy fields `enforcement` and `advisory_paths`; legacy and
+  absent configuration remain enforced. No installed policy or native security
+  configuration was changed. Guardian and the Claude Code project are unchanged.
+- Only exact-listed literal local `/bin/rm -rf -- <path>` targets qualify after
+  bounded committed-content inspection. Other categories, dirty/untracked data,
+  protected names, symlinks/hardlinks, nonstandard modes/metadata, Strict,
+  escalation and pending obligations retain the existing Gate. This is not a
+  full metadata backup or atomic protection against concurrent replacement.
+- Nine new boundary tests passed, including real deletion of test-owned files,
+  independent Git restoration, hidden dirty bytes, metadata rejection, protected
+  collateral, preserved obligations and failure/UNKNOWN result handling.
+- Full source release checks passed: plugin, six skill validators, manifest,
+  and 250 tests in 156.021 seconds. Subsequent changes were documentation only;
+  the manifest was regenerated and checked after recording these results.
+- Three native CLI 0.155.0-alpha.9 fixed-response probes: advisory/workspace-write,
+  enforced/workspace-write, advisory/read-only. ACGM emitted `gate-advised` for
+  both advisory cases; enforced emitted `gate-denied`. Targets stayed intact.
+  In advisory cases the actual tool result was native command-policy rejection:
+  `rm -f style commands are not permitted. Use a safer approach`. This was not
+  Astra choosing to stop, and not evidence that the read-only sandbox itself
+  intercepted execution. No approval dialog/auto-review decision was observed.
+- Nonblocking notice was present on the next model request; it is not a
+  prerequisite that the model reads before mutation. The fixture final message
+  is not success evidence. No native delete/post-verification or model cost
+  improvement is claimed. Fixed Responses usage is synthetic, not telemetry
+  suitable for token comparison; real-model/account calls: zero.
+- Native probes used isolated homes and invocation-only trust bypass for vetted
+  fixture Hooks; no desktop trust or installation acceptance. The previously
+  reported unsupported Guardian CLI version remains unresolved, not weakened.
+- Local artifacts: `.acgm/advisory-candidate/{native.py,results.json,release.json,REPORT.md}`.
+
+## Retained quiet-entry candidate — 2026-09-26
+
+- Removed the experimental deletion exception, Git-content/metadata inspection,
+  `gate-advised` emission and `enforcement`/`advisory_paths` schema extensions.
+  Archived its source and tests locally with the experimental evidence; no
+  installed environment had enabled it. Unknown policy fields fail closed.
+- Retained quiet healthy entry, targeted recovery and conditional doctor/report.
+  Existing verification obligations still require the supplied check; ordinary
+  result verification remains required even without a mechanical obligation.
+- Direct same-fixture comparison with PR HEAD: healthy Light SessionStart model
+  context 762 -> 0 characters; project-event reads 2 -> 1. Counts cover that Hook
+  function only, not all hooks, model tokens, or task duration.
+- AST comparison confirms pre-tool Gate, post-tool handling, Stop, arm consumption,
+  policy schema and profile resolver equal PR HEAD. All 13 targeted policy tests
+  passed, including removal of the advisory fields without opening a bypass.
+- Prior quiet-entry real-model evidence remains relevant but small and mixed:
+  fewer aggregate tokens, no stable speedup. No additional model calls were made
+  for this rollback. Guardian's previously documented native-version limitation
+  remains open. No installation, user config modification, commit or push.
+- Final verification artifacts live in `.acgm/quiet-final/`.
+
+## Project continuity and current Guardian acceptance — 2026-09-28
+
+- Markdown decision/snapshot record changes now produce advisory entry/recovery
+  notices; policy files, required root rules and unsafe directory entries remain
+  enforced. The baseline is not rewritten. Existing anchored directory scanning
+  is reused; no new permission system or persistent acknowledgement state.
+- Source release checks passed with 246 tests (144.646 seconds). A captured native
+  0.158.0-alpha.2.1 metrics fixture validates latest-response rather than cumulative
+  usage. Unknown versions, identity mismatch and malformed/stale data stay refused.
+- Final native harness passed all 22 assertions across 24 scenarios, including
+  record readback on resume, exact fixed-check failure escalation and Guardian
+  continue/handoff/compaction behavior. This supersedes the previously unsupported
+  current-version limitation only for the explicitly verified 0.158.0-alpha.2.1.
+- Initial native failures were retained: asynchronous fixture commands were not
+  awaited; login-shell PATH/global CLI selection and an unsupported metacharacter
+  in the explicit source path then prevented correct checks. The final fixture
+  preserves its isolated PATH and waits for commands; production gates were not
+  weakened. No real-model token or semantic handoff claim follows from this test.
+- Detailed public scope and limits: docs/LEAN-WORKFLOW-ACCEPTANCE.md. Local raw
+  results: .acgm/phase-next/release-final.json and native-final.json. No installation
+  or immutable release-tag replacement occurred in this development stage.

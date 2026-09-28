@@ -1629,12 +1629,12 @@ class RuntimeTests(unittest.TestCase):
             self.assertFalse((root / ".acgm").exists())
             self.assertFalse((root / ".governance").exists())
 
-    def test_session_context_scopes_runtime_claim_and_routes_decision_work(self) -> None:
+    def test_healthy_entry_is_quiet_without_losing_heartbeat(self) -> None:
         self.init_activate()
         _, result = self.hook("session-start", self.payload("SessionStart"))
-        context = result["hookSpecificOutput"]["additionalContext"]
-        self.assertIn("decision-ledger", context)
-        self.assertIn("does not prove that other Hooks ran", context)
+        self.assertEqual(result, {})
+        self.assertIn("hook-heartbeat", self.event_kinds())
+        self.assertEqual(self.hook("subagent-start", self.payload("SubagentStart"))[1], {})
 
     def test_decision_drafts_do_not_rebaseline_or_create_stop_obligations(self) -> None:
         self.init_activate()
@@ -1650,7 +1650,9 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(state_path.read_bytes(), baseline)
         (governance / "decisions" / "ADR-test.md").write_text("# Accepted storage decision\n\nUse the reviewed format.\n")
         status = json.loads(self.cli("doctor", str(self.project), "--json").stdout)
-        self.assertEqual(status["project_state"], "DRIFTED")
+        self.assertEqual(status["project_state"], "GOVERNED")
+        self.assertIn(".governance/decisions:changed", status["record_changes"])
+        self.assertEqual(self.hook("stop", self.payload("Stop"))[1], {})
         self.assertEqual(state_path.read_bytes(), baseline)
 
     def test_inactive_residual_adapter_does_not_hide_ambiguous_container(self) -> None:
@@ -1759,13 +1761,14 @@ class RuntimeTests(unittest.TestCase):
         self.assertTrue((workspace / "CONSTITUTION.md").is_file())
         self.assertFalse((nested / "CONSTITUTION.md").exists())
 
-    def test_directory_content_change_produces_drift(self) -> None:
+    def test_directory_record_change_is_advisory(self) -> None:
         self.init_activate()
         decision = self.project / ".governance" / "decisions" / "0001-initial.md"
         decision.write_text(decision.read_text(encoding="utf-8") + "Changed later.\n", encoding="utf-8")
         doctor = json.loads(self.cli("doctor", str(self.project), "--json", check=True).stdout)
-        self.assertEqual(doctor["project_state"], "DRIFTED")
-        self.assertIn(".governance/decisions:changed", doctor["drift"])
+        self.assertEqual(doctor["project_state"], "GOVERNED")
+        self.assertIn(".governance/decisions:changed", doctor["record_changes"])
+        self.assertEqual(self.pre_bash("pwd"), {})
 
     def test_activate_doctor_and_hook_observation(self) -> None:
         self.init_activate()
@@ -1779,7 +1782,7 @@ class RuntimeTests(unittest.TestCase):
             "session-start",
             self.payload("SessionStart", source="startup", model="private-model-name"),
         )
-        self.assertEqual(output["hookSpecificOutput"]["hookEventName"], "SessionStart")
+        self.assertEqual(output, {})
         after = json.loads(
             self.cli("doctor", str(self.project), "--json", "--strict", check=True).stdout
         )
@@ -1823,11 +1826,11 @@ class RuntimeTests(unittest.TestCase):
         self.assertIn("AGENTS.md", doctor["missing"])
         self.assertTrue(any(item.startswith("AGENTS.md:") for item in doctor["drift"]))
 
-    def test_uninitialized_project_is_warn_only_and_not_blocked(self) -> None:
+    def test_uninitialized_project_is_quiet_and_not_blocked(self) -> None:
         output = self.pre_bash("git reset --hard HEAD")
         self.assertEqual(output, {})
         _, start = self.hook("session-start", self.payload("SessionStart", source="startup"))
-        self.assertIn("not active", start["hookSpecificOutput"]["additionalContext"])
+        self.assertEqual(start, {})
         self.assertNotIn("gate-denied", self.event_kinds())
 
     def test_apply_patch_body_mention_is_allowed_but_target_is_blocked(self) -> None:

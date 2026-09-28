@@ -1,5 +1,9 @@
 # ACGM for Codex one-consent installation / 一次授权安装
 
+**Development branch notice:** the quiet-workflow/Guardian changes are unreleased.
+The recipe below installs the existing public candidate, not these branch changes.
+See [development acceptance](docs/LEAN-WORKFLOW-ACCEPTANCE.md) before preparing a new release.
+
 Release candidate: **`0.3.0-rc.1`**, immutable source tag:
 **`v0.3.0-rc.1`**.
 

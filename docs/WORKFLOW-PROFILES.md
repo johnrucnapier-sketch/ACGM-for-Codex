@@ -1,4 +1,4 @@
-# Workflow profiles: bounded first stage
+# Workflow guidance: quiet entry, explicit assistance
 
 Status: source candidate, not an installed-runtime upgrade. The user approved the
 bounded direction on 2026-09-16: preserve Hard Core, adjust workflow burden, keep
@@ -33,7 +33,7 @@ fresh target evidence and independent postconditions. It does not mean additiona
 approval for already authorized work or more paperwork for its own sake.
 
 Existing target/command/session binding, policy-integrity denials, evidence
-semantics, one-time arms, verification obligations and Stop behavior are unchanged.
+semantics, one-time arms, existing verification obligations and Stop behavior are retained.
 A fixed check's zero exit still proves only that the check ran successfully.
 Neither profile selection nor successful inspection proves semantic safety.
 
@@ -57,7 +57,7 @@ This decision belongs to the existing activation baseline. The agent may prepare
 it when project policy configuration is authorized, explain the recommendation,
 and use the existing reviewed activation workflow. No installer creates it by
 default, no Hook writes it, and no model may edit/reactivate it to evade controls.
-Changes, additions or removals after activation cause ordinary governance drift.
+Changes, additions or removals of this policy after activation cause hard governance drift.
 Malformed or symlinked present policy cannot silently fall back to Light.
 
 The read-only explanation command is:
@@ -74,15 +74,73 @@ Omitting `--session` omits session evidence; it is not proof of no escalation.
 On an unactivated project the result is explicitly an inactive recommendation.
 The command creates no configuration, ledger or HMAC key.
 
-At SessionStart/SubagentStart the Hook supplies an initial profile for grounding.
-This is not classification of future work. The agent reapplies the risk floor
-when the operation changes, retaining user-raised requirements for their requested
-scope. Existing detected destructive categories also get a Strict operation notice.
-Other service/remote/MCP actions rely on the skill's semantic guidance and native
-permissions: there is no new general command classifier. A caller-provided
-`--risk read-only` never bypasses the mechanical Gate. Do not run the explanation
-command before every tool; resolve when entering a task or when relevant inputs
-change. Clarify only ambiguity that changes the required action or lifecycle policy.
+## When governance appears (2026-09-26 candidate)
+
+The quiet-entry simplification changes visibility, not enforcement or the accepted
+configuration schema. Ordinary task entry is no longer a request to recover the
+whole project. The legacy resolver and capability mapping above remain available
+for compatibility and explicit explanation; they are not a new default ceremony.
+Removing that mapping or migrating existing project decisions is deferred.
+
+| Trigger | Required behavior | Context shown |
+|---|---|---|
+| Healthy default or Light entry, no open obligations | Keep integrity checks and heartbeat | None |
+| No project governance installed | Remain inactive; do not suggest bootstrap automatically | None |
+| Explicit Standard/Strict or configured general/limited assistance | Honor accepted project assistance | Short profile guidance |
+| Earlier verification obligation | Preserve it across tasks and sessions | Count and report command |
+| Repeated correlated fixed-check failure | Retain latched incident guidance | Existing escalation notice |
+| Broken/drifted policy | Keep existing fail-closed behavior | Repair notice |
+| Covered destructive command | Keep denial, exact target binding, fixed check and one retry | Existing Gate output |
+| Service/deployment or other semantic risk | Confirm target, authorization, recovery and postcondition | Existing truth-first skill |
+| Compaction, handoff or concrete stale-state uncertainty | Recover relevant project facts | Existing session-grounding skill |
+| Material project decision | Preserve rationale and unfinished questions | Existing decision-ledger skill |
+
+Skills remain discoverable. Narrowing their descriptions reduces unnecessary
+implicit selection; it does not hide their metadata or unload already-read text.
+There is no dynamic plugin loader, classifier, new mode or persistent state.
+Existing project AGENTS/Constitution requirements still apply. New stock AGENTS
+text makes doctor/report conditional; this change does not rewrite installed
+project files or reactivate their baselines.
+
+A silent entry does not prove that all Hooks ran, classify future work as low
+risk, or waive explicit project requirements. Detected destructive categories still get their Strict operation notice. Other service/remote/MCP
+actions rely on truth-first semantic guidance and native permissions; this is
+not universal mechanical risk detection. Do not run `policy` before ordinary
+tools just to compensate for an absent startup message.
+
+Guardian remains independent. Runtime checks and ledger I/O still cost time;
+quiet model context is not zero runtime overhead. Cost/quality improvement needs
+fresh model runs; deterministic tests alone cannot establish token savings or
+prove implicit skill selection on real tasks.
+
+## Advisory experiment withdrawn (2026-09-26)
+
+The candidate deletion exception was tested and withdrawn before installation.
+`enforcement` and `advisory_paths` are not supported configuration fields; the
+original strict schema rejects them. No installed project needs migration.
+The experiment added recovery checks but demonstrated no native execution benefit:
+ACGM advice was followed by a Codex command-policy rejection. Evidence is retained
+in EVIDENCE.md; passing fixture tests did not justify ongoing production complexity.
+
+The retained change targets a measured source of ceremony: healthy task entry
+and automatic full recovery. It does not replace denials with per-command warnings,
+change native policy, or create a second permission system. A platform refusal is
+an unexecuted request, not a reason to repeat ACGM arming or claim verification.
+
+## Project records and policy integrity (2026-09-28)
+
+Within the required decisions/snapshots directories, ordinary `.md` additions,
+edits and removals are `record_changes`. They generate one concise reminder at
+entry/recovery; ordinary tools remain quiet. The activation baseline is retained,
+so later sessions can still identify changed records. No per-tool reminder or
+new acknowledgement state is added. Review only relevant records; a changed ADR
+is not approval, authorization or proof that the recorded fact is current.
+
+Constitution, AGENTS, scope, non-Markdown files (including the workflow policy),
+missing required directories, symlinks, special files and unreadable entries remain
+hard boundaries. Do not put executable policy into Markdown to evade validation.
+Cross-session obligations remain in the existing ledger and are not cleared by
+editing records, changing sessions or choosing a quieter profile.
 
 ## Bounded automatic escalation
 

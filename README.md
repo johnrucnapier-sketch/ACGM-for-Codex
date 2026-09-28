@@ -49,7 +49,7 @@ Codex Hook 覆盖范围随平台版本和工具路径变化，应按[当前官�
 
 - 五态项目健康模型：`INSTALLED_NOT_BOOTSTRAPPED`、`PARTIALLY_GOVERNED`、
   `GOVERNED`、`DRIFTED`、`BROKEN`；
-- `SessionStart` 和 `SubagentStart` 自动注入当前项目状态与 grounding 提示；
+- `SessionStart` 和 `SubagentStart` 在健康默认状态下安静运行；仅在未完成义务、异常或显式流程辅助设置需要时提示；
 - `PreToolUse` 在已识别的写入路径上保护由人所有的 Constitution，并对一组窄匹配破坏性命令执行 evidence gate；
 - `PermissionRequest` 只记一条脱敏边界观察，不批准、不拒绝，也不替用户形成治理决定；
 - evidence gate 不把 Codex Bash `PostToolUse.tool_response` 的纯文本当成成功凭据；
@@ -57,7 +57,8 @@ Codex Hook 覆盖范围随平台版本和工具路径变化，应按[当前官�
   exit code 为零时改变 gate 或义务状态；检查输出仍须人工或 Agent 解释后才能声称语义验证；
 - `Stop` 对尚未出现匹配检查的动作最多续跑一次，避免无限循环；
 - `PreCompact` 只保存脱敏 heartbeat，不保存项目 snapshot 或压缩内容；compact 后由
-  `SessionStart` 根据当前项目文件重新 grounding；
+  恢复技能按需读取当前项目相关状态，不要求每个短任务重复完整 grounding；
+- 项目决策/快照的 Markdown 记录变化在恢复时提醒；实际策略变化及结构异常仍阻断；
 - 本机、append-only、source-minimized Event Ledger；
 - 五个 Codex skills：`governance-bootstrap`、`session-grounding`、`truth-first`、
   `activity-report`、`decision-ledger`；

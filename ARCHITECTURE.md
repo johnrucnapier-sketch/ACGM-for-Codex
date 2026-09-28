@@ -239,9 +239,13 @@ evidence to the gate.
 
 File existence alone cannot produce `GOVERNED`. `CLAUDE.md` never substitutes for
 Codex's `AGENTS.md`. Activation hashes every required file and every non-hidden
-file in the decision and snapshot directories. A later addition, removal, or
-content change in those directories is baseline drift, and empty or placeholder-
-only decision/snapshot directories are never accepted as complete governance.
+file in the decision and snapshot directories. Ordinary `.md` record changes
+there are advisory `record_changes`, shown at entry/recovery without reactivation.
+They do not authorize new policy or silently update the baseline. Non-Markdown
+changes (including `acgm-policy.json`), missing directories, unsafe entries and
+unreadable data remain hard drift. Empty or placeholder-only directories are still
+incomplete governance. Executable policy belongs in the protected policy files;
+Markdown records never grant tool permission.
 
 ## High-risk evidence gate
 
