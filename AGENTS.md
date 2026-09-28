@@ -26,7 +26,7 @@ When the user explicitly asks to install or update ACGM for Codex:
    installs, unknown sources, another scope, newer/unknown versions, or private
    Event Ledger/HMAC content. The sole plugin-upgrade exception is one enabled
    user-scope official `0.1.0-rc.2` through `0.1.0-rc.4` or `0.2.0-rc.1`
-   through `0.2.0-rc.4` or `0.3.0-rc.1` whose exact old source/ref/policy,
+   through `0.2.0-rc.4` or `0.3.0-rc.1` / `0.4.0-rc.1` whose exact old source/ref/policy,
    marketplace snapshot, bytes, and sole cache entry all verify. The plan digest
    must explicitly include the fixed marketplace remove, exact-ref add, and
    plugin add sequence. A fully verified interrupted official transition may be
@@ -41,7 +41,7 @@ When the user explicitly asks to install or update ACGM for Codex:
 6. After plugin installation or replacement, fully quit and reopen Codex
    desktop. A new task inside the old app-server process is not a fresh plugin
    load. In the first normal task after that restart, the user must personally
-   review `/hooks`.
+   review the updated Hooks in Codex Settings (or `/hooks` in a supporting CLI).
    When the pending set contains only the exact verified ACGM definitions and
    Codex offers **Trust all and continue**, that one platform action may trust
    the bundle. Never bulk-trust unrelated or unknown Hooks. The first

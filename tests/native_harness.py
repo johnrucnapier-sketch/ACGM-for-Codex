@@ -27,6 +27,7 @@ def main():
     fixture=R.RuntimeTests();fixture.setUp();fixture.project=fixture.project.resolve();fixture.init_activate()
     base=fixture.base;home=base/'home';home.mkdir()
     data=fixture.data
+    plugin=base/'plugin';plugin.symlink_to(R.REPO,target_is_directory=True)
     cache=Path.home()/'.codex/models_cache.json'
     if cache.exists():shutil.copy2(cache,home/'models_cache.json')
     (data/'runtime').mkdir(parents=True);shutil.copy2(R.RUNTIME,data/'runtime/acgm_codex.py')
@@ -75,7 +76,7 @@ plugins = false
     capture=home/'capture.py'
     capture.write_text("import json,sys,pathlib\np=json.load(sys.stdin)\nwith pathlib.Path("+repr(str(base/'hook-input.jsonl'))+").open('a') as f:f.write(json.dumps(p)+'\\n')\nprint('{}')\n")
     hooks=json.loads((R.REPO/'hooks/hooks.json').read_text())
-    prefix='env '+ ' '.join(shlex.quote(k+'='+str(v)) for k,v in {'PLUGIN_ROOT':R.REPO,'PLUGIN_DATA':data,'ACGM_CODEX_DATA_DIR':data}.items())+' '
+    prefix='env '+ ' '.join(shlex.quote(k+'='+str(v)) for k,v in {'PLUGIN_ROOT':plugin,'PLUGIN_DATA':data,'ACGM_CODEX_DATA_DIR':data}.items())+' '
     for event,groups in hooks['hooks'].items():
         for group in groups:
             for hook in group['hooks']:hook['command']=prefix+hook['command']
@@ -162,6 +163,17 @@ plugins = false
     try:
         approval_control('decline')
         approval_control('accept')
+        state_path=fixture.project/'.acgm/codex.json'
+        current_state=state_path.read_bytes()
+        old_state=json.loads(current_state);old_state['version']='0.3.0-rc.1'
+        state_path.write_text(json.dumps(old_state));old_bytes=state_path.read_bytes()
+        run('upgrade-old-first-read',['pwd'])
+        run('upgrade-old-mutation',['printf compatible > upgraded.txt'])
+        run('upgrade-old-danger-denied',['rm -rf upgrade-fixture'])
+        upgrade_baseline_unchanged=state_path.read_bytes()==old_bytes
+        state_path.write_text('broken-json')
+        run('broken-diagnostic',[shlex.quote(str(plugin/'bin/acgm-codex'))+' doctor --strict --json'])
+        state_path.write_bytes(current_state)
         run('local-safe-read',['pwd'])
         run('local-mutation',["printf fixture > mutation.txt"])
         run('execution-failure',['exit 7'])
@@ -228,6 +240,11 @@ plugins = false
         checks={
             'native-approval-decline':not by_name['native-approval-decline']['file_exists'],
             'native-approval-accept':by_name['native-approval-accept']['file_exists'],
+            'upgrade-first-read':any(e.get('exit_code')==0 for e in completed('upgrade-old-first-read')),
+            'upgrade-normal-mutation':(fixture.project/'upgraded.txt').read_text()=='compatible',
+            'upgrade-danger-denied':not completed('upgrade-old-danger-denied'),
+            'upgrade-baseline-preserved':upgrade_baseline_unchanged,
+            'broken-diagnostic-executes':any(e.get('exit_code')==2 and 'BROKEN' in e.get('aggregated_output','') for e in completed('broken-diagnostic')),
             'safe-read':any(e.get('exit_code')==0 for e in completed('local-safe-read')),
             'mutation':(fixture.project/'mutation.txt').read_text()=='fixture',
             'failed-execution':any(e.get('exit_code')==7 for e in completed('execution-failure')),

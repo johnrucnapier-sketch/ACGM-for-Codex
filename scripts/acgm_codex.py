@@ -33,7 +33,7 @@ except ImportError:  # pragma: no cover - the supported platforms provide it.
     fcntl = None  # type: ignore[assignment]
 
 
-VERSION = "0.4.0-rc.1"
+VERSION = "0.4.0-rc.2"
 STATE_SCHEMA = "acgm-codex-state-v1"
 LEDGER_SCHEMA = "acgm-codex-event-v1"
 CASE_SCHEMA = "acgm-codex-case-v1"
@@ -50,6 +50,7 @@ QUICKSTART_COMPATIBLE_STATE_VERSIONS = (
     "0.2.0-rc.3",
     "0.2.0-rc.4",
     "0.3.0-rc.1",
+    "0.4.0-rc.1",
 )
 QUICKSTART_MANAGED_DIRECTORIES = (
     ".acgm",
@@ -1086,7 +1087,7 @@ def _project_status(root: Path) -> dict[str, Any]:
         result["drift"] = ["adapter-baseline-invalid"]
         return result
     drift: list[str] = []
-    if state.get("version") != VERSION:
+    if state.get("version") != VERSION and not _compatible_state_upgrade(state.get("version")):
         drift.append("adapter-version:changed")
     expected_files = baseline["files"]
     for name in REQUIRED_FILES:
@@ -1858,6 +1859,31 @@ def _tokens_if_independent(command: str) -> Optional[list[str]]:
     return tokens or None
 
 
+def _readonly_diagnostic(root: Path, payload: dict[str, Any]) -> bool:
+    """One literal, current-package doctor invocation; no PATH lookup or shell extras."""
+    if payload.get("tool_name") != "Bash":
+        return False
+    command = _command_from(payload)
+    if "doctor" not in command:
+        return False
+    tokens = _tokens_if_independent(command)
+    launcher = Path(shlex.split(_cli_launcher())[0])
+    if not tokens or tokens[:2] != [str(launcher), "doctor"]:
+        return False
+    flags = [arg for arg in tokens[2:] if arg.startswith("--")]
+    targets = [arg for arg in tokens[2:] if not arg.startswith("--")]
+    if (len(flags) != len(set(flags)) or not set(flags) <= {"--strict", "--json"}
+            or targets not in ([], [str(root)])):
+        return False
+    try:
+        # The fixed launcher and runtime must be the same release as this Hook.
+        return (_sha256(launcher) == "81713aa59c5758e8416978166a4a76cd62343eb69e3a439e7b9772484d773026"
+                and _sha256(launcher.parent.parent / "scripts/acgm_codex.py")
+                == _sha256(Path(__file__)))
+    except OSError:
+        return False
+
+
 def _payload_cwd(root: Path, payload: dict[str, Any]) -> Path:
     raw = payload.get("cwd")
     candidate = Path(raw).expanduser() if isinstance(raw, str) and raw else root
@@ -2251,8 +2277,9 @@ def _hook_session_like(
     if status["state"] in {DRIFTED, BROKEN}:
         result = _hook_context(
             official,
-            "ACGM Codex detected governance drift. Run `acgm-codex doctor --strict` "
-            "and repair or reactivate before relying on enforcement."
+            "ACGM Codex detected governance drift. Run `" + _cli_launcher()
+            + " doctor " + shlex.quote(str(root)) + " --strict` "
+            "and inspect the specific drift before relying on enforcement."
             + root_note
             + obligation_note,
         )
@@ -2296,7 +2323,8 @@ def _hook_pretool(root: Path, payload: dict[str, Any], status: dict[str, Any]) -
         _append_event("policy-unavailable-denied", root, session, turn,
                       outcome="denied", state=status["state"])
         return _deny_pretool("ACGM policy is unreadable or drifted; inspect it with "
-                             "acgm-codex doctor before continuing this governed project.")
+                             + _cli_launcher() + " doctor " + shlex.quote(str(root))
+                             + " --strict before continuing this governed project.")
     if status["state"] != GOVERNED:
         return {}
 
@@ -2621,6 +2649,10 @@ def _run_hook(dispatch: str, project: Optional[str]) -> int:
             return 0
         if not _supported_platform():
             raise RuntimeProblem("unsupported platform")
+        # Diagnostic access must not depend on a readable policy or writable ledger.
+        if dispatch == "pre-tool" and _readonly_diagnostic(root, payload):
+            _json_output({})
+            return 0
         status = _project_status(root)
         if dispatch in {"session-start", "subagent-start"}:
             result = _hook_session_like(dispatch, root, payload, status)
@@ -3328,8 +3360,7 @@ def _quickstart_plan(project: str, preset: str = QUICKSTART_PRESET) -> dict[str,
     state_drift = list(status.get("drift", []))
     source_state_version = state.get("version")
     version_only_upgrade = (
-        status["state"] == DRIFTED
-        and state_drift == ["adapter-version:changed"]
+        status["state"] == GOVERNED
         and _compatible_state_upgrade(source_state_version)
     )
     if status["state"] in {DRIFTED, BROKEN} and not version_only_upgrade:

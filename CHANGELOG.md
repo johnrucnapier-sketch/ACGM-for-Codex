@@ -7,6 +7,7 @@
 
 | 版本 / 阶段 | 主要解决的问题 |
 |---|---|
+| 0.4.0-rc.2（2026-09-28） | 修复旧项目升级后的只读锁死；提供受限诊断入口，保持风险拦截与原有基线 |
 | 0.4.0-rc.1（2026-09-28） | 普通任务安静启动；项目记录变化改为按需提醒；保留策略与危险操作边界；验证当前 Codex 的 Guardian 生命周期 |
 | 0.3.0-rc.1（2026-09-12） | 用决策记录保留长期项目的重要理由与未决问题；减少多仓库重复提醒 |
 | 0.2.0-rc.4（2026-07-20） | 修复 Constitution 保护误伤普通读取和无关写入的问题 |
@@ -18,6 +19,29 @@
 | 0.1.0-rc.2（2026-07-15） | 建立标签固定的公开安装入口、包校验和保守迁移边界 |
 | 0.1.0-rc.1（未发布） | 建立独立 Codex 插件、项目健康状态、evidence gate、验证义务及本机账本 |
 
+
+## 0.4.0-rc.2 — upgrade lockout hotfix (2026-09-28)
+
+- Fix a real regression after upgrading an active 0.3.0-rc.1 project: version-only
+  drift blocked even `pwd`, `git status`, and the recommended `doctor` command.
+- Accept only known compatible adapter versions while still validating the
+  schema, baseline, project policy and activation. Do not rewrite the project
+  version, baseline, activation, records or obligations during normal work.
+- Keep explicit quickstart version migration available when requested.
+- Permit one literal current-plugin `doctor` invocation even when policy or
+  ledger inspection fails. Bind its launcher/runtime bytes to the current
+  release and restrict its flags and project target. Reject PATH lookups,
+  substituted executables, shell chaining, redirection and extra commands.
+- Preserve fail-closed behavior for unknown versions, substantive drift,
+  corrupted state and protected operations. Add source and native first-command
+  upgrade regressions; existing successful install checks did not cover this path.
+- Pin the exact official 0.4.0-rc.1 predecessor for the normal upgrade flow.
+  Updated Hook definitions require personal review again in Codex Settings.
+
+Validation: 253 source tests and all package/skill contracts passed; native Codex
+Harness passed 28 scenarios / 27 assertions, including the four new upgrade and
+diagnostic scenarios. Read-only inspection of the affected project returns
+GOVERNED without changing its original adapter or baseline.
 
 ## 0.4.0-rc.1 — lean workflow and project continuity (2026-09-28)
 
