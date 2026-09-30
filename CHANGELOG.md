@@ -1,5 +1,14 @@
 # Changelog
 
+## Documentation follow-up — 2026-09-30 (no runtime release)
+
+- Verify the published 0.4.0-rc.2 candidate for team installation; keep its tag,
+  runtime, Hooks, skills and installation policy unchanged.
+- State the Astra-focused product scope and compare Claude Code 0.9.6-rc.3
+  without importing a second logger, remote-tool registry or model classifier.
+- Correct stale README publication status, skill count and core integrity-error
+  behavior. See [team readiness](docs/TEAM-READINESS-20260930.md).
+
 ## 版本概览
 
 以下摘要依据本仓库历史条目、Git 标签和开发交接资料整理。

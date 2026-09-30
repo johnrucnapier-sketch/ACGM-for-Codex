@@ -1,7 +1,9 @@
 # ACGM for Codex
 
-开发候选新增 [Light / Standard / Strict 工作流档位](docs/WORKFLOW-PROFILES.md)：
-调节恢复与提示负担，保留全部现有 Gate；Guardian 独立。发行候选为 0.4.0-rc.2；安装与桌面实际加载分别验收。
+当前公开候选为 **0.4.0-rc.2**。本产品以 Codex 中 Astra 系列顶尖模型为适配重点：
+普通任务安静运行，按需恢复项目状态，保留窄风险边界；Guardian 独立。
+[队友安装与版本复核](docs/TEAM-READINESS-20260930.md)说明安装入口和与 Claude 最新版的取舍。
+[Light / Standard / Strict](docs/WORKFLOW-PROFILES.md)兼容接口仍保留，无须为普通任务先选择档位。
 
 **让长周期 Agent 编码不再悄悄漂移。**
 
@@ -60,8 +62,8 @@ Codex Hook 覆盖范围随平台版本和工具路径变化，应按[当前官�
   恢复技能按需读取当前项目相关状态，不要求每个短任务重复完整 grounding；
 - 项目决策/快照的 Markdown 记录变化在恢复时提醒；实际策略变化及结构异常仍阻断；
 - 本机、append-only、source-minimized Event Ledger；
-- 五个 Codex skills：`governance-bootstrap`、`session-grounding`、`truth-first`、
-  `activity-report`、`decision-ledger`；
+- 六个 Codex skills：`governance-bootstrap`、`session-grounding`、`truth-first`、
+  `activity-report`、`decision-ledger`、`session-handoff`；
 - 一次授权 quickstart：自动生成版本化治理预设、激活项目并验证本地 postcondition；
 - `acgm-codex quickstart / init / activate / doctor / report / export-case / resolve / gate / version`。
 
@@ -114,8 +116,9 @@ add acgm-codex@acgm-codex --json`。唯一的插件自动升级例外，是一�
 原子发布到稳定的 `PLUGIN_DATA/runtime/acgm_codex.py`，不再让新 Hook 依赖会被 Codex 清理的
 版本 cache。Codex 的信任 hash 绑定固定 Hook 命令；该命令内嵌本版 runtime 的精确大小和
 SHA-256，只执行同一次读取且完全匹配的字节。runtime 变化会改变 Hook 定义并重新触发平台审核，
-不能在固定信任命令下静默换代码。缺失、篡改、symlink、FIFO 或特殊文件都快速返回空结果，
-不会把 Stop Hook 错误变成模型循环。这不是 Lite 模式，也不放宽完整 runtime 的治理规则。
+不能在固定信任命令下静默换代码。当前版本对缺失、篡改、symlink、FIFO 或特殊文件
+快速终止检查：核心 PreToolUse 返回拒绝，其他核心生命周期事件返回空结果以避免 Stop 循环。
+Guardian 有独立的完整性错误处理。这不是 Lite 模式，不提供全局 fail-open 开关。
 旧版 bridge 只承担升级中的过渡恢复；RC3 及后续版本仍会严格识别 Codex 在 marketplace 更新后出现的“旧版本 cache + 新 ref”短暂重关联状态；
 只有旧 cache、目标 checkout、scope、policy 与官方发布 pin 全部匹配才继续。被 RC1 中断的同类
 状态必须先生成新的当前版本 digest，再自动执行 remove/add/plugin-add，不会要求用户手工修配置。
