@@ -2,9 +2,12 @@
 
 **Drift control for long-horizon agent coding.**
 
-The development candidate adds [workflow profiles](docs/WORKFLOW-PROFILES.md):
-Light / Standard / Strict tune grounding and guidance while preserving every existing
-Gate. Guardian remains independent. This is not a released or installed upgrade.
+The published candidate is **0.4.0-rc.2**. The product focuses on Astra-class
+frontier models in Codex: quiet ordinary work, task-relevant recovery, narrow
+safety boundaries, and an independent Guardian. See the
+[team installation and review](docs/TEAM-READINESS-20260930.md).
+The existing [workflow profile](docs/WORKFLOW-PROFILES.md) compatibility interface
+remains; ordinary work does not require a profile-selection step.
 
 ACGM for Codex is an independent Codex adapter for Agent Coding Governance
 Methodology. It turns implementation, cognitive, structural-placement, and scope
@@ -62,8 +65,8 @@ equates “installed” with “fully enforced.”
 - A source-minimized `PreCompact` heartbeat only—not a project snapshot or a
   copy of compacted context—and renewed grounding from current files afterward.
 - A local, append-only, source-minimized Event Ledger.
-- Five skills: `governance-bootstrap`, `session-grounding`, `truth-first`, and
-  `activity-report`, and `decision-ledger`.
+- Six skills: `governance-bootstrap`, `session-grounding`, `truth-first`,
+  `activity-report`, `decision-ledger`, and `session-handoff`.
 - One-consent quickstart that provisions a versioned governance preset,
   activates the exact project, and checks local postconditions.
 - The `acgm-codex` CLI with `quickstart`, `init`, `activate`, `doctor`, `report`,
@@ -133,9 +136,10 @@ Hook command; that command embeds this release's exact runtime size and SHA-256
 and executes only the same bytes it read and verified. Changed runtime bytes
 therefore change the Hook definition and require a new platform review rather
 than executing silently under an old trust decision. Missing, changed,
-symlinked, FIFO, and special-file runtimes fail open immediately with an empty
-result, so a Stop error cannot become a model loop. This is not Lite mode and
-does not weaken rules while the full runtime exists. Old-version bridges remain
+symlinked, FIFO, and special-file runtimes terminate the integrity check promptly:
+the current core PreToolUse denies; other core lifecycle events return an empty
+result to avoid a Stop loop. Guardian has independent integrity-error handling.
+This is not Lite mode or a global fail-open option. Old-version bridges remain
 only as transition recovery. RC3 and later also verify the temporary “old installed cache + new source ref”
 re-association that Codex can expose after marketplace replacement. It proceeds
 only when the old cache, target checkout, scope, policy, and pinned official
