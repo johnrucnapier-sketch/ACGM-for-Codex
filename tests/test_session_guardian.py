@@ -73,6 +73,20 @@ class SessionGuardianTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Unverified rollout version'):
             G.RolloutReader('fixture', self.root).poll(self.path)
 
+    def test_0159_alpha_native_metrics_are_not_compaction_headroom(self):
+        records = json.loads((Path(__file__).parent / 'fixtures/guardian-0.159.0-alpha.12.1-metrics.json').read_text())
+        records[0]['payload']['cwd'] = str(self.root)
+        self.path.write_text(''.join(json.dumps(r) + '\n' for r in records))
+        reader = G.RolloutReader('fixture', self.root)
+        reader.poll(self.path)
+        result = reader.status(now=G.timestamp(records[-1]['timestamp']))
+        self.assertEqual(result['cli_version'], '0.159.0-alpha.12.1')
+        self.assertEqual(result['context_used'], 1020)
+        self.assertEqual(result['context_window'], 475000)
+        self.assertEqual(result['state'], 'NORMAL')
+        self.assertEqual(result['measurement_scope'], 'last-response-usage')
+        self.assertIsNone(result['native_compaction_remaining'])
+
     def test_no_data_and_invalid_values_are_unknown(self):
         self.assertEqual(self.state()["state"], "UNKNOWN")
         for used in [None, -1, True, "100"]:

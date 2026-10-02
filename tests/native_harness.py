@@ -47,7 +47,8 @@ def main():
                           'profiles':[p for p in ('light','standard','strict')
                                       if 'Initial workflow profile: '+p in request_text]})
             counter+=1
-            command=sequence.pop(0) if sequence else None
+            compacting = 'CONTEXT CHECKPOINT COMPACTION' in request_text
+            command=sequence.pop(0) if sequence and not compacting else None
             if callable(command):command=command()
             if command is not None:
                 arguments=command if isinstance(command,dict) else {'cmd':command,'max_output_tokens':200,'yield_time_ms':10000,'login':False}
@@ -126,6 +127,9 @@ plugins = false
         row={'case':name,'returncode':p.returncode,'native':parsed,'stderr':p.stderr[-2000:],'fixture_response_requests':len(calls)-before}
         row['profiles_seen']=sorted({profile for call in calls[before:] for profile in call['profiles']})
         row['guardian_notices']=sorted({stage for call in calls[before:] for stage in call['guardian_notices']})
+        if name in {'auto-compaction-intercept','compaction-recovery-arm','compaction-recovery','recovery-normal-next-turn'}:
+            row['hook_sequence']=[{k:e.get(k) for k in ('hook_event_name','turn_id','trigger')} for e in
+                map(json.loads,(base/'hook-input.jsonl').read_text().splitlines()) if e.get('session_id')==thread]
         if thread:
             audit=subprocess.run([sys.executable,str(R.REPO/'scripts/session_guardian.py'),'audit','--project',str(fixture.project),'--thread',thread],env=env,capture_output=True,text=True)
             try:row['audit']=json.loads(audit.stdout)
@@ -238,9 +242,28 @@ plugins = false
         run('next-prompt-blocked',['true'],prompt='new business request',resume=thread)
         run('handoff',['true'],prompt='ACGM 交接',resume=thread)
         usage=451000
-        run('auto-compaction-intercept',['true','true'])
+        stopped=run('auto-compaction-intercept',['true','true'])
         usage=1000
+        run('compaction-recovery-arm',[],prompt='ACGM 恢复会话',resume=stopped)
+        run('compaction-recovery',['printf recovered > recovery.txt'],prompt='继续',resume=stopped)
+        run('recovery-normal-next-turn',['true'],resume=stopped)
+        run('recovery-danger-still-denied',['rm -rf recovery-protected'],resume=stopped)
         run('new-session-clean',['true'])
+        # Model a not-yet-published transcript at the first prompt only. Keep
+        # all real, hash-verified Hook code and subsequent native events.
+        startup_hooks=json.loads(json.dumps(hooks))
+        wrapper=home/'unflushed-prompt.py'
+        wrapper.write_text("import json,subprocess,sys\np=json.load(sys.stdin)\np['transcript_path']=sys.argv[2]\nr=subprocess.run(sys.argv[1],shell=True,input=json.dumps(p),text=True,capture_output=True)\nprint(r.stdout,end='');sys.stderr.write(r.stderr);sys.exit(r.returncode)\n")
+        for event in ('UserPromptSubmit','PreToolUse'):
+            for group in startup_hooks['hooks'][event]:
+                for hook in group['hooks']:
+                    if 'session_hooks.py' in hook['command']:
+                        hook['command']='python3 '+shlex.quote(str(wrapper))+' '+shlex.quote(hook['command'])+' '+shlex.quote(str(home/'not-yet-published.jsonl'))
+        (home/'hooks.json').write_text(json.dumps(startup_hooks))
+        try:
+            run('new-session-unflushed-prompt',['printf started > startup.txt','rm -rf startup-protected'])
+        finally:
+            (home/'hooks.json').write_text(json.dumps(hooks))
         import urllib.request
         panel=subprocess.Popen([sys.executable,str(R.REPO/'scripts/session_dashboard.py'),'--project',str(fixture.project),'--codex-home',str(home)],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,env=env)
         try:
@@ -294,6 +317,11 @@ plugins = false
             'next-prompt-blocked':by_name['next-prompt-blocked']['fixture_response_requests']==0,
             'handoff':bool(completed('handoff')),
             'precompact':by_name['auto-compaction-intercept']['returncode']==1 and by_name['auto-compaction-intercept']['fixture_response_requests']==1,
+            'compaction-recovery':by_name['compaction-recovery']['returncode']==0 and (fixture.project/'recovery.txt').exists(),
+            'recovery-danger-denied':not completed('recovery-danger-still-denied'),
+            'recovery-next-turn':by_name['recovery-normal-next-turn']['returncode']==0 and bool(completed('recovery-normal-next-turn')),
+            'new-session-unflushed':by_name['new-session-unflushed-prompt']['returncode']==0 and (fixture.project/'startup.txt').exists(),
+            'unknown-metrics-danger-denied':len(completed('new-session-unflushed-prompt'))==1,
             'new-session-clean':bool(completed('new-session-clean')),
             'dashboard-no-model':by_name['dashboard-no-model-calls']['fixture_response_requests']==0 and all(by_name['dashboard-no-model-calls']['task_counts']),
         }

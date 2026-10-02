@@ -5,7 +5,7 @@ repositories. Capture versions and results, but never paste secrets into a promp
 or ledger fixture.
 
 **Candidate status:** this checklist defines the remaining acceptance work for
-`0.4.0-rc.3`. It has not yet been recorded as passed against an installed
+`0.4.0-rc.4`. It has not yet been recorded as passed against an installed
 candidate in a completely new Codex task.
 
 ## Decision-ledger acceptance for 0.3
@@ -54,8 +54,8 @@ plan. The dry run is machine verification, not a second user approval.
 Expected:
 
 - the source is the exact candidate tag, manifest, and package inventory;
-- `acgm-codex@acgm-codex` version `0.4.0-rc.3` is installed and enabled from
-  the exact repository and `v0.4.0-rc.3`;
+- `acgm-codex@acgm-codex` version `0.4.0-rc.4` is installed and enabled from
+  the exact repository and `v0.4.0-rc.4`;
 - cached package bytes match the source manifest;
 - the target has the required governance assets, is activated, and doctor sees
   it as `GOVERNED`;
@@ -77,16 +77,16 @@ the project apply stage and confirm the combined command returns
 
 In a disposable Codex profile, install the public official `0.4.0-rc.1` tag first and
 record its user scope, marketplace source/ref, sole cache directory, and private
-plugin-data metadata. Then run the 0.4.0-rc.3 combined dry-run/apply flow above.
+plugin-data metadata. Then run the 0.4.0-rc.4 combined dry-run/apply flow above.
 
 Expected:
 
-- the plan explicitly contains marketplace remove, exact `v0.4.0-rc.3`
+- the plan explicitly contains marketplace remove, exact `v0.4.0-rc.4`
   marketplace add, and plugin add;
 - apply refuses a changed starting version/ref, marketplace snapshot, installed
   cache, plan digest, or any duplicate/foreign/unknown/newer state before its
   first mutation;
-- the final installation has the full `0.4.0-rc.3` cache and only the exact
+- the final installation has the full `0.4.0-rc.4` cache and only the exact
   fail-open bridge at the verified old version path; both pass inventory and
   byte verification;
 - before closing the old task, trigger its old Stop Hook and confirm it exits
@@ -154,7 +154,7 @@ After trust, run one harmless real tool call such as a Git status inspection,
 then run:
 
 ```bash
-ACGM="${CODEX_HOME:-$HOME/.codex}/plugins/cache/acgm-codex/acgm-codex/0.4.0-rc.3/bin/acgm-codex"
+ACGM="${CODEX_HOME:-$HOME/.codex}/plugins/cache/acgm-codex/acgm-codex/0.4.0-rc.4/bin/acgm-codex"
 "$ACGM" quickstart status /absolute/path/to/disposable-project --json
 "$ACGM" doctor /absolute/path/to/disposable-project --strict
 ```

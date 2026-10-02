@@ -1,9 +1,9 @@
 # ACGM for Codex
 
-当前公开候选为 **0.4.0-rc.3**。本产品以 Codex 中 Astra 系列顶尖模型为适配重点：
+当前公开候选为 **0.4.0-rc.4**。本产品以 Codex 中 Astra 系列顶尖模型为适配重点：
 普通任务安静运行，按需恢复项目状态，保留窄风险边界；Guardian 独立。
 [安装说明](INSTALL.md)提供当前版本入口；[9 月 30 日复核](docs/TEAM-READINESS-20260930.md)记录与 Claude 版的取舍。
-本次新增 [Codex 0.159.2 的 Guardian 验证](docs/GUARDIAN-0159-ACCEPTANCE.md)，不改变提醒阈值和治理强度。
+本次修复 Guardian 新会话启动和旧会话恢复，验证当前 0.159.0-alpha.12.1；测量不可用仅提示 UNKNOWN，独立风险 Gate 保持。见[修复说明](docs/GUARDIAN-RECOVERY-20261002.md)。
 [Light / Standard / Strict](docs/WORKFLOW-PROFILES.md)兼容接口仍保留，无须为普通任务先选择档位。
 
 **让长周期 Agent 编码不再悄悄漂移。**
@@ -14,7 +14,7 @@ ACGM for Codex 是 ACGM（Agent Coding Governance Methodology）的独立 Codex
 
 [English](README.en.md)
 
-> **候选版：`0.4.0-rc.3`。** 安装前核对 GitHub 上的准确 tag；安装成功与当前任务已加载新版须分别验证。自动测试可以证明
+> **候选版：`0.4.0-rc.4`。** 安装前核对 GitHub 上的准确 tag；安装成功与当前任务已加载新版须分别验证。自动测试可以证明
 > 包结构和运行时行为；只有完成全新 Codex task 中的 Hook 信任与真实工具调用 E2E 后，
 > 才能声称自动机制已在当前 Codex 版本上运行。
 
@@ -86,7 +86,7 @@ Agent 自动克隆准确 tag，并运行：
 
 ```bash
 ACGM_SOURCE="$(mktemp -d)/ACGM-for-Codex"
-git clone --branch v0.4.0-rc.3 --depth 1 \
+git clone --branch v0.4.0-rc.4 --depth 1 \
   https://github.com/johnrucnapier-sketch/ACGM-for-Codex.git "$ACGM_SOURCE"
 python3 "$ACGM_SOURCE/scripts/quickstart.py" \
   --project /准确项目的绝对路径 --dry-run --json
@@ -107,7 +107,7 @@ python3 "$ACGM_SOURCE/scripts/quickstart.py" --project /准确项目的绝对路
 任一事实变化都会使授权失效。
 
 全新安装只调用两条固定官方命令：`codex plugin marketplace add
-johnrucnapier-sketch/ACGM-for-Codex --ref v0.4.0-rc.3 --json` 与 `codex plugin
+johnrucnapier-sketch/ACGM-for-Codex --ref v0.4.0-rc.4 --json` 与 `codex plugin
 add acgm-codex@acgm-codex --json`。唯一的插件自动升级例外，是一个已启用、user scope、
 来源/ref/policy/marketplace snapshot/package bytes/唯一 cache 全部验证通过的官方
 `0.1.0-rc.2` 至 `0.1.0-rc.4` 或 `0.2.0-rc.1` 至 `0.2.0-rc.4` 或 `0.3.0-rc.1` / `0.4.0-rc.1` / `0.4.0-rc.2`；此时 digest 会明确绑定
@@ -240,4 +240,4 @@ python3 scripts/release_check.py
 
 ## 可选 Session Guardian
 
-0.4.0-rc.3 已把经过本机试用的 Session Guardian 注册到同一个 ACGM 插件，默认按项目关闭。保留 35%／20% 提醒、带交接余量的确认门与“继续一次”；不会额外调用模型刷新状态。已有独立 companion 时须先停用旧版并保留状态，避免重复运行。见 [模块说明](docs/SESSION-GUARDIAN.md) 和 [本轮审计报告](docs/HARDENING-2026-09-16.md)。
+0.4.0-rc.4 已把经过本机试用的 Session Guardian 注册到同一个 ACGM 插件，默认按项目关闭。保留 35%／20% 提醒、带交接余量的确认门与“继续一次”；不会额外调用模型刷新状态。已有独立 companion 时须先停用旧版并保留状态，避免重复运行。见 [模块说明](docs/SESSION-GUARDIAN.md) 和 [本轮审计报告](docs/HARDENING-2026-09-16.md)。
