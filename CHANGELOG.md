@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.4.0-rc.3 — Codex 0.159.2 Guardian compatibility (2026-10-02)
+
+- Verify native Codex 0.159.2 rollout metrics and add only that exact version
+  to the Guardian reader. Latest response usage remains distinct from cumulative
+  spend; unknown successors remain rejected. Thresholds and lifecycle policy
+  are unchanged.
+- Retain a sanitized native metrics fixture and extend native acceptance to
+  assert delivered 35%/20% notices, buffered tool stopping and actual completion
+  reconciliation, in addition to continuation, handoff and compaction controls.
+- Pin the official RC2 predecessor for plugin upgrades; preserve project
+  baselines, Guardian pending requests and private data.
+- When newer Codex installations omit the external plugin-creator validator,
+  run and explicitly label the repository package contracts instead. Failures
+  still fail the release check; native installation remains a separate check.
+- Regenerate digest-bound Hook definitions. After upgrading, restart Codex and
+  personally review the new definitions. See [acceptance](docs/GUARDIAN-0159-ACCEPTANCE.md).
+
+Validation: 256 source tests, package/skill/manifest checks, and native Codex
+0.159.2 with 28 scenarios / 32 assertions passed. Desktop restart/trust and the
+first actual project Hook remain separate post-install acceptance.
+
 ## Documentation follow-up — 2026-09-30 (no runtime release)
 
 - Verify the published 0.4.0-rc.2 candidate for team installation; keep its tag,
@@ -16,6 +37,7 @@
 
 | 版本 / 阶段 | 主要解决的问题 |
 |---|---|
+| 0.4.0-rc.3（2026-10-02） | 验证 Guardian 在 Codex 0.159.2 上的用量、提醒与交接生命周期；保留原阈值与安全边界 |
 | 0.4.0-rc.2（2026-09-28） | 修复旧项目升级后的只读锁死；提供受限诊断入口，保持风险拦截与原有基线 |
 | 0.4.0-rc.1（2026-09-28） | 普通任务安静启动；项目记录变化改为按需提醒；保留策略与危险操作边界；验证当前 Codex 的 Guardian 生命周期 |
 | 0.3.0-rc.1（2026-09-12） | 用决策记录保留长期项目的重要理由与未决问题；减少多仓库重复提醒 |

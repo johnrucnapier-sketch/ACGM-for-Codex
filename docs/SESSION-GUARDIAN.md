@@ -1,4 +1,4 @@
-# Optional Session Guardian — integrated module (0.4.0-rc.1)
+# Optional Session Guardian — integrated module (0.4.0-rc.3)
 
 Session Guardian is an opt-in module of ACGM for Codex. The integrated Hook
 configuration registers the existing reader and lifecycle policy inside the
@@ -52,8 +52,15 @@ active local session confirmed `session_meta`, `event_msg/token_count` with
 The latter advances more recently than some token-count events. The reader also supports `0.158.0-alpha.2.1`, whose native temporary-session
 records were captured on 2026-09-28 and retained as a sanitized regression fixture.
 That fixture confirms latest usage 120 versus cumulative usage 240 and an observed
-475000-token effective window. Other versions report UNKNOWN until independently
+475000-token effective window. Release 0.4.0-rc.3 additionally verifies **0.159.2**
+with a native temporary session captured on 2026-10-02: latest usage 1020,
+cumulative usage 2040, effective window 475000. Its sanitized metrics are in
+`tests/fixtures/guardian-0.159.2-metrics.json`. No reader schema change was needed;
+only the exact verified version was added. Other versions report UNKNOWN until independently
 checked. This is version-bounded compatibility, not an internal schema stability claim.
+
+An opted-in Guardian can pause new operations when that observation is unavailable;
+UNKNOWN does not silently disable it. See [0.159.2 acceptance](GUARDIAN-0159-ACCEPTANCE.md).
 
 The implemented fallback resolves only the explicit thread ID (or CODEX_THREAD_ID)
 through SQLite in read-only mode, then verifies rollout metadata ID, cwd and CLI

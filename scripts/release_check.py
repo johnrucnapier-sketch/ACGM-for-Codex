@@ -81,15 +81,16 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
     else:
-        checks.append(
-            {
-                "name": "plugin_contract",
-                "ok": False,
-                "returncode": None,
-                "stdout": "",
-                "stderr": f"official validator not found: {PLUGIN_VALIDATOR}",
-            }
+        # Recent Codex distributions no longer bundle plugin-creator. Keep a
+        # real check, label its provenance, and require native acceptance
+        # separately; absence must never become an unearned official PASS.
+        check = run("plugin_contract:repository",
+                    [sys.executable, "-m", "unittest", "tests.test_package_contract", "-v"])
+        check["validator_note"] = (
+            "Official plugin-creator validator unavailable; repository contract only. "
+            "Native plugin installation/loading requires separate verification."
         )
+        checks.append(check)
 
     skill_paths = sorted(
         path
@@ -163,6 +164,8 @@ def main(argv: list[str] | None = None) -> int:
         for check in checks:
             state = "PASS" if check["ok"] else "FAIL"
             print(f"[{state}] {check['name']}")
+            if check.get("validator_note"):
+                print(check["validator_note"])
             if check["stdout"]:
                 print(check["stdout"])
             if check["stderr"]:

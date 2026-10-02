@@ -1,7 +1,7 @@
 # ACGM for Codex one-consent installation / 一次授权安装
 
-Release candidate: **`0.4.0-rc.2`**, immutable source tag:
-**`v0.4.0-rc.2`**.
+Release candidate: **`0.4.0-rc.3`**, immutable source tag:
+**`v0.4.0-rc.3`**.
 
 Do not run the public install recipe until that exact tag has been published and
 verified. Local source validation does not install this candidate.
@@ -26,7 +26,7 @@ The Agent performs:
 
 ```bash
 ACGM_SOURCE="$(mktemp -d)/ACGM-for-Codex"
-git clone --branch v0.4.0-rc.2 --depth 1 \
+git clone --branch v0.4.0-rc.3 --depth 1 \
   https://github.com/johnrucnapier-sketch/ACGM-for-Codex.git "$ACGM_SOURCE"
 python3 "$ACGM_SOURCE/scripts/quickstart.py" \
   --project /absolute/path/to/the/exact/project \
@@ -58,7 +58,7 @@ scope、ADR 或 snapshot，也不重复询问同一授权。
 3. for a fresh install, runs only the two fixed official Codex installation
    commands;
 4. as the sole plugin-upgrade exception, can replace one enabled user-scope
-   official `0.1.0-rc.2` through `0.1.0-rc.4` or `0.2.0-rc.1` through `0.2.0-rc.4` or `0.3.0-rc.1` / `0.4.0-rc.1` whose repository, ref,
+   official `0.1.0-rc.2` through `0.1.0-rc.4` or `0.2.0-rc.1` through `0.2.0-rc.4` or `0.3.0-rc.1` / `0.4.0-rc.1` / `0.4.0-rc.2` whose repository, ref,
    policy, marketplace snapshot, package bytes, and sole cache entry all verify;
    a CLI-omitted scope is accepted only through the exact enabled plugin table
    in the already bound user `CODEX_HOME`, never by absence alone;
@@ -89,7 +89,7 @@ scope、ADR 或 snapshot，也不重复询问同一授权。
     missing preset decision/snapshot must be added, and allows project adapter
     upgrades only from the explicit compatible
     `0.1.0-rc.2` through `0.1.0-rc.4` and `0.2.0-rc.1` through
-    `0.2.0-rc.4` and `0.3.0-rc.1` / `0.4.0-rc.1` set—not from unknown
+    `0.2.0-rc.4` and `0.3.0-rc.1` / `0.4.0-rc.1` / `0.4.0-rc.2` set—not from unknown
     or newer versions;
 11. activates the project without rotating an already-valid activation;
 12. runs local doctor postconditions and records a private progress receipt for
@@ -146,7 +146,7 @@ One-consent quickstart is intentionally narrow. It does not authorize or perform
 - replacement of duplicate, unknown-source, wrong-scope, newer, unrecognized,
   or otherwise wrong-version installs. The only exception is the exact verified
   official user-level `0.1.0-rc.2` through `0.1.0-rc.4` or
-  `0.2.0-rc.1` through `0.2.0-rc.4` or `0.3.0-rc.1` / `0.4.0-rc.1` upgrade described above;
+  `0.2.0-rc.1` through `0.2.0-rc.4` or `0.3.0-rc.1` / `0.4.0-rc.1` / `0.4.0-rc.2` upgrade described above;
 - overwriting an unknown Constitution, `AGENTS.md`, scope, decision, or snapshot;
 - overwriting an unknown `.acgm/quickstart.json` receipt, absorbing a concurrent
   Git/index/governance change into the activation baseline, or downgrading an

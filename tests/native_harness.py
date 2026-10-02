@@ -23,6 +23,8 @@ CODEX = shutil.which('codex')
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output',type=Path,required=True)
+    parser.add_argument('--metrics-output',type=Path,
+                        help='Export sanitized native metrics from the synthetic safe-read session')
     args=parser.parse_args()
     fixture=R.RuntimeTests();fixture.setUp();fixture.project=fixture.project.resolve();fixture.init_activate()
     base=fixture.base;home=base/'home';home.mkdir()
@@ -39,6 +41,9 @@ def main():
             request=json.loads(self.rfile.read(int(self.headers['Content-Length'])))
             request_text=json.dumps(request,ensure_ascii=False)
             calls.append({'path':self.path,'input_items':len(request.get('input',[])),
+                          'guardian_notices':[s for s,marker in
+                              [('CAUTION','余量进入谨慎阶段'),('CLOSING','建议下一步整理交接')]
+                              if marker in request_text],
                           'profiles':[p for p in ('light','standard','strict')
                                       if 'Initial workflow profile: '+p in request_text]})
             counter+=1
@@ -98,8 +103,29 @@ plugins = false
             try:parsed.append(json.loads(line))
             except ValueError:pass
         thread=next((e.get('thread_id') for e in parsed if e.get('type')=='thread.started'),resume)
+        if name == 'local-safe-read' and thread and args.metrics_output:
+            # Only allowlisted metric fields from this temporary fixture; no
+            # instructions, prompts, tool contents or user's session history.
+            paths=list((home/'sessions').rglob('*'+thread+'*.jsonl'))
+            if len(paths)!=1: raise RuntimeError('Expected one exact fixture rollout')
+            metrics=[]
+            for line in paths[0].read_text().splitlines():
+                record=json.loads(line);kind=record.get('type');payload=record.get('payload',{})
+                if kind=='session_meta':
+                    metrics.append({'type':kind,'payload':{'id':'fixture','cwd':'__PROJECT__',
+                                                          'cli_version':payload['cli_version']}})
+                elif kind=='event_msg' and payload.get('type')=='token_count' and isinstance(payload.get('info'),dict):
+                    info=payload['info']
+                    metrics.append({'type':kind,'timestamp':record['timestamp'],'payload':{
+                        'type':'token_count','info':{k:info[k] for k in
+                        ('model_context_window','last_token_usage','total_token_usage') if k in info}}})
+                elif kind=='token_usage_record':
+                    metrics.append({'type':kind,'timestamp':record['timestamp'],'payload':{
+                        'thread_id':'fixture','usage':payload['usage']}})
+            args.metrics_output.write_text(json.dumps(metrics,indent=2)+'\n')
         row={'case':name,'returncode':p.returncode,'native':parsed,'stderr':p.stderr[-2000:],'fixture_response_requests':len(calls)-before}
         row['profiles_seen']=sorted({profile for call in calls[before:] for profile in call['profiles']})
+        row['guardian_notices']=sorted({stage for call in calls[before:] for stage in call['guardian_notices']})
         if thread:
             audit=subprocess.run([sys.executable,str(R.REPO/'scripts/session_guardian.py'),'audit','--project',str(fixture.project),'--thread',thread],env=env,capture_output=True,text=True)
             try:row['audit']=json.loads(audit.stdout)
@@ -259,6 +285,11 @@ plugins = false
             'records-readable-on-resume':any(e.get('exit_code')==0 and 'KEEP_API' in e.get('aggregated_output','') for e in completed('records-resume')) and by_name['records-resume']['record_intact'],
             'escalation-recorded':sum(e['kind']=='policy-escalated' for e in payload['ledger'])==1,
             'quiet-with-guardian':not by_name['low-context']['profiles_seen'] and bool(completed('low-context')),
+            'caution-delivered':'CAUTION' in by_name['warning-35']['guardian_notices'] and len(completed('warning-35'))==2,
+            'closing-delivered':'CLOSING' in by_name['handoff-20']['guardian_notices'] and len(completed('handoff-20'))==2,
+            'buffer-stops-next-tool':len(completed('critical'))==1,
+            'audit-native-success':any(e.get('outcome')=='execution-succeeded' for e in by_name['local-safe-read'].get('audit',{}).get('results',[])),
+            'audit-native-failure':any(e.get('exit_code')==7 and e.get('outcome')=='execution-failed' for e in by_name['execution-failure'].get('audit',{}).get('results',[])),
             'continue-once':bool(completed('continue-once')),
             'next-prompt-blocked':by_name['next-prompt-blocked']['fixture_response_requests']==0,
             'handoff':bool(completed('handoff')),

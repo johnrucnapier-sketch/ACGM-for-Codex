@@ -56,6 +56,23 @@ class SessionGuardianTests(unittest.TestCase):
             self.append(self.metric(used))
             self.assertEqual(self.state()["state"], expected)
 
+    def test_0159_native_metrics_and_unknown_successor(self):
+        records = json.loads((Path(__file__).parent / 'fixtures/guardian-0.159.2-metrics.json').read_text())
+        records[0]['payload']['cwd'] = str(self.root)
+        self.path.write_text(''.join(json.dumps(r) + '\n' for r in records))
+        reader = G.RolloutReader('fixture', self.root)
+        reader.poll(self.path)
+        result = reader.status(now=G.timestamp(records[-1]['timestamp']))
+        self.assertEqual(result['state'], 'NORMAL')
+        self.assertEqual(result['cli_version'], '0.159.2')
+        self.assertEqual(result['context_used'], 1020)
+        self.assertEqual(result['context_window'], 475000)
+        self.assertEqual(records[-1]['payload']['info']['total_token_usage']['total_tokens'], 2040)
+        records[0]['payload']['cli_version'] = '0.159.3'
+        self.path.write_text(''.join(json.dumps(r) + '\n' for r in records))
+        with self.assertRaisesRegex(ValueError, 'Unverified rollout version'):
+            G.RolloutReader('fixture', self.root).poll(self.path)
+
     def test_no_data_and_invalid_values_are_unknown(self):
         self.assertEqual(self.state()["state"], "UNKNOWN")
         for used in [None, -1, True, "100"]:
