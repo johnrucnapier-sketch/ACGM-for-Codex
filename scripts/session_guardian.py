@@ -11,7 +11,7 @@ import sqlite3
 import subprocess
 import time
 
-SUPPORTED = {"0.154.0-alpha.6.2", "0.158.0-alpha.2.1"}
+SUPPORTED = {"0.154.0-alpha.6.2", "0.158.0-alpha.2.1", "0.159.2"}
 MAX_LINE = 1024 * 1024
 READ_BUDGET = 4 * MAX_LINE
 
