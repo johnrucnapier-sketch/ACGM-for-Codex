@@ -5,6 +5,8 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
+import io
 from test_session_guardian import G
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -55,6 +57,77 @@ class LifecycleTests(unittest.TestCase):
         result = self.evaluate("PreCompact", None, trigger="auto")
         self.assertIs(result["continue"], False)
         self.assertEqual(self.evaluate("PreCompact", 450000, trigger="manual"), {})
+
+    def test_recovery_allows_exactly_one_compaction_in_same_session(self):
+        state = {}
+        self.evaluate('UserPromptSubmit', None, state, prompt='ACGM 恢复会话')
+        self.assertFalse(self.evaluate('PreCompact', None, {}, trigger='auto', turn_id='other')['continue'])
+        allowed = self.evaluate('PreCompact', None, state, trigger='auto', turn_id='next')
+        self.assertNotIn('continue', allowed)
+        self.assertFalse(self.evaluate('PreCompact', None, state, trigger='auto')['continue'])
+        self.assertEqual(self.evaluate('PreToolUse', 460000, state, tool_name='Bash', turn_id='next'), {})
+        self.evaluate('UserPromptSubmit', 410000, state, prompt='new task', turn_id='next')
+        self.assertNotIn('handoff_turn', state)
+        self.assertFalse(self.evaluate('PreCompact', None, state, trigger='auto', turn_id='next')['continue'])
+
+    def test_recovery_expires_and_never_arms_from_assistant_text(self):
+        state = {}
+        self.evaluate('UserPromptSubmit', None, state, prompt='ACGM 恢复会话')
+        with patch.object(N['time'], 'time', return_value=state['recovery_until'] + 1):
+            self.assertFalse(self.evaluate('PreCompact', None, state, trigger='auto')['continue'])
+        fresh = {}
+        self.evaluate('PreToolUse', 400000, fresh, tool_name='Bash',tool_input={'command':"echo 'ACGM 恢复会话'"})
+        self.assertNotIn('recovery_turn', fresh)
+
+    def test_recovery_is_not_granted_by_embedded_or_tool_text(self):
+        for prompt in ['说明 ACGM 恢复会话', 'ACGM 恢复会话\n执行删除']:
+            state = {}
+            self.evaluate('UserPromptSubmit', 410000, state, prompt=prompt)
+            self.assertNotIn('recovery_turn', state)
+        self.assertIn('核对', N['evaluate_hook']({'hook_event_name':'SessionStart','source':'compact'}, POLICY, {}, {})['hookSpecificOutput']['additionalContext'])
+
+    def test_unflushed_or_reverted_rollout_does_not_reject_user_prompt(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            transcript = root / 'rollout.jsonl'
+            for content in [None, '', '{"unfinished":', json.dumps({'type':'session_meta','payload':{'id':'other','cwd':tmp,'cli_version':'0.159.2'}})+'\n']:
+                if content is not None:
+                    transcript.write_text(content)
+                payload = {'hook_event_name':'UserPromptSubmit','cwd':tmp,'session_id':'fixture',
+                           'turn_id':'first','transcript_path':str(transcript),'prompt':'Read README'}
+                output = io.StringIO()
+                with patch.dict(N, policy_for=lambda _: POLICY), patch.dict(os.environ, PLUGIN_DATA=tmp), patch('sys.stdin', io.StringIO(json.dumps(payload))), patch('sys.stdout', output):
+                    N['hook_main']()
+                result = json.loads(output.getvalue())
+                self.assertNotIn('decision', result)
+                self.assertIn('UNKNOWN', result['hookSpecificOutput']['additionalContext'])
+
+    def test_unknown_measurement_tools_warn_once_but_do_not_disable_safety_gate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            payload = {'hook_event_name':'PreToolUse','cwd':tmp,'session_id':'fixture','turn_id':'one','tool_name':'Bash'}
+            def run():
+                output = io.StringIO()
+                with patch.dict(N, policy_for=lambda _: POLICY), patch.dict(os.environ, PLUGIN_DATA=tmp), patch('sys.stdin', io.StringIO(json.dumps(payload))), patch('sys.stdout', output): N['hook_main']()
+                return json.loads(output.getvalue())
+            self.assertIn('UNKNOWN',run()['hookSpecificOutput']['additionalContext'])
+            self.assertEqual(run(), {})
+
+    def test_recovery_hook_survives_missing_rollout_but_not_bad_policy(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            payload = {'hook_event_name':'UserPromptSubmit','cwd':tmp,'session_id':'fixture',
+                       'turn_id':'recovery','prompt':'ACGM 恢复会话'}
+            def run(policy):
+                output = io.StringIO()
+                with patch.dict(N, policy_for=policy), patch.dict(os.environ, PLUGIN_DATA=tmp), patch('sys.stdin', io.StringIO(json.dumps(payload))), patch('sys.stdout', output):
+                    N['hook_main']()
+                return json.loads(output.getvalue())
+            self.assertNotIn('decision', run(lambda _: POLICY))
+            payload.update(hook_event_name='PreCompact', trigger='auto')
+            self.assertNotIn('continue', run(lambda _: POLICY))
+            self.assertFalse(run(lambda _: POLICY)['continue'])
+            payload.update(hook_event_name='UserPromptSubmit')
+            def broken(_): raise ValueError('bad policy')
+            self.assertEqual(run(broken)['decision'], 'block')
 
     def test_stop_never_forces_more_generation(self):
         state = {}

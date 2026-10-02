@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.4.0-rc.4 — Guardian startup and recovery (2026-10-02)
+
+- Verify the installed Codex 0.159.0-alpha.12.1 using native fixtures, retaining
+  support for the separately verified 0.159.2. Unknown metrics stay UNKNOWN.
+- Treat missing/unreadable/unverified session measurements as a warning instead
+  of rejecting new prompts or tools. Deduplicate unavailable-measurement tool
+  notices. Project-policy corruption, runtime integrity and risk Gates retain
+  their protections.
+- Add explicit, expiring, one-compaction recovery in the same session; account
+  for native compaction running before UserPromptSubmit. Reground after compact.
+- Label response usage as an estimate that excludes pending context, rather than
+  promising remaining native compaction space.
+- Pin verified RC3 upgrades and preserve project baselines/private state.
+- See [incident, recovery and validation](docs/GUARDIAN-RECOVERY-20261002.md).
+
+
+Validation: 264 source tests and 33 native scenarios / 37 assertions on
+Codex 0.159.0-alpha.12.1 passed.
+
 ## 0.4.0-rc.3 — Codex 0.159.2 Guardian compatibility (2026-10-02)
 
 - Verify native Codex 0.159.2 rollout metrics and add only that exact version

@@ -11,7 +11,7 @@ import sqlite3
 import subprocess
 import time
 
-SUPPORTED = {"0.154.0-alpha.6.2", "0.158.0-alpha.2.1", "0.159.2"}
+SUPPORTED = {"0.154.0-alpha.6.2", "0.158.0-alpha.2.1", "0.159.2", "0.159.0-alpha.12.1"}
 MAX_LINE = 1024 * 1024
 READ_BUDGET = 4 * MAX_LINE
 
@@ -152,6 +152,9 @@ class RolloutReader:
         now = time.time() if now is None else now
         result = {"schema": "acgm-session-status-v1", "state": "UNKNOWN",
                   "source": "codex-rollout-fallback", "quality": "UNKNOWN",
+                  "measurement_scope": "last-response-usage",
+                  "native_compaction_remaining": None,
+                  "measurement_limit": "Response usage excludes pending context; native compaction may occur earlier than this estimate.",
                   "cli_version": self.version, "context_used": self.used,
                   "context_window": self.window, "remaining_percent": None,
                   "observed_at": self.observed_at,

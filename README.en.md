@@ -1,13 +1,16 @@
 # ACGM for Codex
 
+RC4 fixes Guardian startup and recovery on Codex 0.159.0-alpha.12.1. Unavailable telemetry warns without rejecting messages/tools; independent safety gates remain. See [incident and recovery](docs/GUARDIAN-RECOVERY-20261002.md).
+
 **Drift control for long-horizon agent coding.**
 
-The published candidate is **0.4.0-rc.3**. The product focuses on Astra-class
+The published candidate is **0.4.0-rc.4**. The product focuses on Astra-class
 frontier models in Codex: quiet ordinary work, task-relevant recovery, narrow
 safety boundaries, and an independent Guardian. See the
 [current installation guide](INSTALL.md) and the historical
-[team review](docs/TEAM-READINESS-20260930.md). This release adds verified Guardian
-support for [Codex 0.159.2](docs/GUARDIAN-0159-ACCEPTANCE.md), without changing thresholds or governance strength.
+[team review](docs/TEAM-READINESS-20260930.md). The earlier
+[Codex 0.159.2 validation](docs/GUARDIAN-0159-ACCEPTANCE.md) remains historical;
+RC4 additionally fixes unavailable measurements and paused-session recovery.
 The existing [workflow profile](docs/WORKFLOW-PROFILES.md) compatibility interface
 remains; ordinary work does not require a profile-selection step.
 
@@ -18,7 +21,7 @@ source-minimized local Event Ledger.
 
 [中文](README.md)
 
-> **Release candidate: `0.4.0-rc.3`.** Verify the exact GitHub tag before installation.
+> **Release candidate: `0.4.0-rc.4`.** Verify the exact GitHub tag before installation.
 > Installed package state and current-task activation are separate checks. This is not a stable
 > release. Automated tests can validate the package and runtime. Automatic Hook
 > behavior is not considered verified until Hook trust and real tool-call E2E pass
@@ -95,7 +98,7 @@ The Agent clones the exact tag and runs:
 
 ```bash
 ACGM_SOURCE="$(mktemp -d)/ACGM-for-Codex"
-git clone --branch v0.4.0-rc.3 --depth 1 \
+git clone --branch v0.4.0-rc.4 --depth 1 \
   https://github.com/johnrucnapier-sketch/ACGM-for-Codex.git "$ACGM_SOURCE"
 python3 "$ACGM_SOURCE/scripts/quickstart.py" \
   --project /absolute/path/to/the/exact/project --dry-run --json
@@ -121,7 +124,7 @@ and identity, existing managed-file hashes, and every proposed byte. Any changed
 fact invalidates the grant before apply.
 
 For a fresh install, bootstrap invokes `codex plugin marketplace add
-johnrucnapier-sketch/ACGM-for-Codex --ref v0.4.0-rc.3 --json` and then `codex
+johnrucnapier-sketch/ACGM-for-Codex --ref v0.4.0-rc.4 --json` and then `codex
 plugin add acgm-codex@acgm-codex --json`. It independently verifies the exact
 marketplace source/ref, plugin name/version/enabled state, and cached package
 bytes. The sole automatic plugin-upgrade exception is one enabled, user-scope
@@ -286,4 +289,4 @@ CC-BY-4.0. See [LICENSING.md](LICENSING.md).
 
 ## Optional Session Guardian
 
-Release 0.4.0-rc.3 registers the existing Session Guardian in the ACGM plugin, disabled unless a project opts in. It preserves the 35%/20% notices, buffered handoff gate, and one-turn continuation. Dashboard polling makes no model requests. Disable an existing standalone companion and preserve its state before switching; do not run both for one project. See the [module guide](docs/SESSION-GUARDIAN.md) and [hardening report](docs/HARDENING-2026-09-16.md).
+Release 0.4.0-rc.4 registers the existing Session Guardian in the ACGM plugin, disabled unless a project opts in. It preserves the 35%/20% notices, buffered handoff gate, and one-turn continuation. Dashboard polling makes no model requests. Disable an existing standalone companion and preserve its state before switching; do not run both for one project. See the [module guide](docs/SESSION-GUARDIAN.md) and [hardening report](docs/HARDENING-2026-09-16.md).

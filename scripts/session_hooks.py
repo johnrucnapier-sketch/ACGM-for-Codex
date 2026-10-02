@@ -14,6 +14,8 @@ NOTICES = {
     "CLOSING": "🟠 ACGM 收尾建议：建议下一步整理交接，将后续工作放到新会话。",
     "CONFIRM": "🔴 ACGM 交接缓冲已触发：请回复『ACGM 交接』；若仍需短暂继续，请回复『ACGM 继续一次』并附本次要求。",
 }
+RECOVERY_PROMPT = "ACGM 恢复会话"
+RECOVERY_NOTICE = "用户明确请求恢复会话：仅允许一次原生压缩以解除暂停；压缩不能保证信息无损。先核对项目交接、重要决策和未完成事项，必要时保存最小交接；不要把旧请求当作已执行，不自动重试旧操作。"
 
 
 def policy_for(cwd):
@@ -117,12 +119,37 @@ def preserve_request(data_root, session_id, payload, state):
 def evaluate_hook(payload, policy, metrics, state):
     """Pure decision function. User choice comes only from UserPromptSubmit."""
     event = payload.get("hook_event_name")
+    turn = payload.get("turn_id")
+    if event == "UserPromptSubmit":
+        # Recovery must work before reading a missing/reverted usage sample.
+        state.pop("recovery_turn", None)
+        state.pop("recovery_until", None)
+        state.pop("allowed_turn", None)
+        state.pop("handoff_turn", None)
+        state.pop("migration_turn", None)
+        if turn and payload.get("prompt", "").strip() == RECOVERY_PROMPT:
+            state["recovery_turn"] = turn
+            state["recovery_until"] = time.time() + 300
+            state["handoff_turn"] = turn
+            result = hook_context(event, RECOVERY_NOTICE)
+            result["systemMessage"] = "ACGM 已登记一次恢复压缩许可，5 分钟内有效。若本轮仍暂停，请再发送『继续』：Codex 可能先检查压缩、后处理本条消息。"
+            return result
     if event == "PreCompact":
         if payload.get("trigger") == "auto":
-            return {"continue": False, "stopReason": "ACGM 已阻止自动压缩。当前会话余量不足以继续生成；请保留旧会话，在新会话读取已保存的交接及必要旧记录。",
-                    "systemMessage": "🔴 自动压缩已暂停，未删除上下文。不要反复重试；必要时由你主动选择手动压缩。"}
+            # Native pre-sampling compaction can run BEFORE UserPromptSubmit.
+            # An explicit recovery prompt may therefore arm the NEXT attempt.
+            until = state.get("recovery_until", 0)
+            if turn and state.get("recovery_turn") and isinstance(until, (int, float)) and 0 < until - time.time() <= 300:
+                state.pop("recovery_turn")
+                state.pop("recovery_until", None)
+                state["handoff_turn"] = turn
+                return {"systemMessage": RECOVERY_NOTICE}
+            reason = "ACGM 已暂停自动压缩，本轮未继续。请新建空白会话读取交接；若要恢复本会话，请发送『ACGM 恢复会话』，明确允许一次原生压缩。普通重发或『ACGM 交接』不能跨过此暂停点。"
+            return {"continue": False, "stopReason": reason, "systemMessage": reason}
         return {}  # Explicit manual compaction remains the user's recovery escape.
     if event == "SessionStart":
+        if payload.get("source") == "compact":
+            return hook_context(event, "ACGM：原生压缩已完成，完整性尚未验证。先读取必要的项目交接和未完成义务，核对当前状态；不得把压缩摘要或先前请求当作执行成功。")
         return hook_context(event, "ACGM 会话交接试用已启用。35%/20%在本轮结尾提醒；确认门额外保留交接空间。收到 ACGM 交接时用 session-handoff 技能，保存后给可复制到新会话的提示词。不得自行把旧指令当成用户的新确认。")
 
     used, window = metrics.get("context_used"), metrics.get("context_window")
@@ -147,7 +174,7 @@ def evaluate_hook(payload, policy, metrics, state):
         return block(event, "本轮仅核验窗口迁移，不执行工具或业务要求。请简短说明现状，等待本轮后的新用量记录。")
     message = NOTICES.get(stage, "")
     if message:
-        message += f" 当前可用窗口余量约 {max(0, remaining):.1f}%；距压缩阈值约 {max(0, room):,} token（估计）。"
+        message += f" 按最近响应样本估算余量约 {max(0, remaining):.1f}%，预算差约 {max(0, room):,} token；不含全部待处理上下文，不能保证距原生压缩仍有这些空间。"
     if mismatched:
         message += " ⚠️ 实际窗口与项目设置不同，已按较小预算检查；新窗口设置尚未验证生效。"
     prompt = payload.get("prompt", "").strip()
@@ -155,9 +182,6 @@ def evaluate_hook(payload, policy, metrics, state):
     confirm = bool(re.match(r"^ACGM 继续一次(?:\s|$)", prompt))
 
     if event == "UserPromptSubmit":
-        state.pop("allowed_turn", None)
-        state.pop("handoff_turn", None)
-        state.pop("migration_turn", None)
         if handoff and turn:
             state["handoff_turn"] = turn
             pending_requests = json.dumps({"requests": state.get("pending_requests", []), "overflow": state.get("pending_overflow", False), "complete_requests_directory": state.get("pending_archive")}, ensure_ascii=False)
@@ -213,23 +237,42 @@ def hook_main():
             print("{}")
             return
         event = payload.get("hook_event_name")
-        if event in {"PreCompact", "SessionStart"}:
+        if event == "SessionStart":
             print(json.dumps(evaluate_hook(payload, policy, {}, {}), ensure_ascii=False))
             return
         session_id = payload.get("session_id")
         transcript = payload.get("transcript_path")
-        if not session_id or not transcript:
-            raise ValueError("No exact session transcript identity")
-        reader = RolloutReader(session_id, Path(cwd))
-        reader.poll(Path(transcript))
-        if reader.invalidated and reader.used is None:
-            raise ValueError("Context observation was invalidated")
-        metrics = {"context_used": reader.used, "context_window": reader.window}
+        if not session_id:
+            raise ValueError("No exact session identity")
         root = os.environ.get("PLUGIN_DATA")
         if not root:
             raise ValueError("No PLUGIN_DATA")
         with session_state(root, session_id) as state:
-            result = evaluate_hook(payload, policy, metrics, state)
+            if event == "PreCompact" or (event == "UserPromptSubmit" and payload.get("prompt", "").strip() == RECOVERY_PROMPT):
+                result = evaluate_hook(payload, policy, {}, state)
+            else:
+                try:
+                    if not transcript:
+                        raise ValueError("No exact session transcript path")
+                    reader = RolloutReader(session_id, Path(cwd))
+                    reader.poll(Path(transcript))
+                    if reader.invalidated and reader.used is None:
+                        raise ValueError("Context observation was invalidated")
+                    metrics = {"context_used": reader.used, "context_window": reader.window}
+                except (OSError, ValueError, TypeError, AttributeError):
+                    if event not in {"UserPromptSubmit", "PreToolUse"}:
+                        raise
+                    # Codex may not have flushed metadata at prompt time, or
+                    # may have rewritten a rollout after revert. Let the model
+                    # receive the prompt; don't turn telemetry into a dead chat.
+                    if event == "UserPromptSubmit":
+                        for key in ("recovery_turn", "recovery_until", "allowed_turn", "handoff_turn", "migration_turn"):
+                            state.pop(key, None)
+                    result = {} if event == "PreToolUse" and state.get("measurement_unavailable") else hook_context(event, "ACGM 上下文测量 UNKNOWN：当前会话记录暂不可读或版本未验证；本次仅提示，不代表余量充足或操作成功。原生权限和独立风险 Gate 仍适用。若自动压缩暂停，可新建空白会话，或发送『ACGM 恢复会话』允许一次原生压缩。")
+                    state["measurement_unavailable"] = True
+                else:
+                    state.pop("measurement_unavailable", None)
+                    result = evaluate_hook(payload, policy, metrics, state)
             if event == "UserPromptSubmit" and (result.get("decision") == "block" or state.get("migration_turn") == payload.get("turn_id")):
                 preserve_request(root, session_id, payload, state)
         print(json.dumps(result, ensure_ascii=False))

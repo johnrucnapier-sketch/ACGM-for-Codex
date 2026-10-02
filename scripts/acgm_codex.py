@@ -33,7 +33,7 @@ except ImportError:  # pragma: no cover - the supported platforms provide it.
     fcntl = None  # type: ignore[assignment]
 
 
-VERSION = "0.4.0-rc.3"
+VERSION = "0.4.0-rc.4"
 STATE_SCHEMA = "acgm-codex-state-v1"
 LEDGER_SCHEMA = "acgm-codex-event-v1"
 CASE_SCHEMA = "acgm-codex-case-v1"
@@ -52,6 +52,7 @@ QUICKSTART_COMPATIBLE_STATE_VERSIONS = (
     "0.3.0-rc.1",
     "0.4.0-rc.1",
     "0.4.0-rc.2",
+    "0.4.0-rc.3",
 )
 QUICKSTART_MANAGED_DIRECTORIES = (
     ".acgm",

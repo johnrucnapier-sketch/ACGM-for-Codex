@@ -1,4 +1,4 @@
-# Optional Session Guardian — integrated module (0.4.0-rc.3)
+# Optional Session Guardian — integrated module (0.4.0-rc.4)
 
 Session Guardian is an opt-in module of ACGM for Codex. The integrated Hook
 configuration registers the existing reader and lifecycle policy inside the
@@ -59,8 +59,7 @@ cumulative usage 2040, effective window 475000. Its sanitized metrics are in
 only the exact verified version was added. Other versions report UNKNOWN until independently
 checked. This is version-bounded compatibility, not an internal schema stability claim.
 
-An opted-in Guardian can pause new operations when that observation is unavailable;
-UNKNOWN does not silently disable it. See [0.159.2 acceptance](GUARDIAN-0159-ACCEPTANCE.md).
+Since RC4, unavailable observation warns UNKNOWN without rejecting user messages or tools; it never claims health. Invalid project policy and runtime integrity still stop the affected path. Verified budget gates and automatic-compaction protection remain. See [0.159.2 acceptance](GUARDIAN-0159-ACCEPTANCE.md).
 
 The implemented fallback resolves only the explicit thread ID (or CODEX_THREAD_ID)
 through SQLite in read-only mode, then verifies rollout metadata ID, cwd and CLI
@@ -72,9 +71,12 @@ sample; unknown is reported rather than inventing precision. It does not parse
 compressed or arbitrary paginated history. Missing files/format changes degrade
 to UNKNOWN. No transcript, source body, command text or metrics are persisted.
 
+RC4 also verifies `0.159.0-alpha.12.1` against a native temporary-session fixture.
+
 Context usage is the latest response total, never cumulative session spend;
 cached input still occupies context. The value is an OFFICIAL_ESTIMATE, not an
-exact real-time free-space meter. Stale (>300 s default), missing or future-dated
+exact real-time free-space meter. Native pending-context estimates may be larger,
+so even a configured compact limit does not guarantee advance warning. Stale (>300 s default), missing or future-dated
 samples are UNKNOWN. The model's observed effective window is used, never its
 advertised maximum. Observed compactions are counted only in the inspected tail;
 zero is not proof of no earlier compaction, and manual/automatic causes are not
@@ -152,3 +154,15 @@ now retained in private per-session JSON files, and the handoff context points
 to that directory, including requests beyond the four-preview limit. This is
 not an attachment backup: referenced files remain external dependencies. Keep
 these private files with the old plugin data when migrating; do not publish them.
+
+## Recovery after a paused automatic compaction
+
+Send exactly `ACGM 恢复会话` in the affected session to permit one native
+compaction for recovery. If the turn is still paused, send `继续` within five
+minutes: Codex can check compaction before processing the recovery prompt.
+The permission is per-session, expires, is consumed once, and does not grant
+business-operation permission. Ordinary later prompts clear unused permission.
+After compaction, read the saved handoff and reconcile unfinished work before
+continuing. A fresh empty task can instead read the explicitly selected handoff.
+Do not revert/fork the full old history and call that an empty new context.
+See [incident and validation](GUARDIAN-RECOVERY-20261002.md).

@@ -103,3 +103,9 @@ archived or a new task created unless the corresponding action actually occurred
 If PreCompact stops the old task too late for another generation, preserve it
 and use a new task to recover from saved files and explicitly selected old
 records. A fixed reserve reduces this risk; it cannot guarantee lossless handoff.
+
+If a user explicitly wants to recover the paused old session, explain that
+`ACGM 恢复会话` permits one native compaction for five minutes. Codex may check
+compaction before that prompt; in that case the user sends `继续` once afterward.
+Never generate this consent yourself or claim compaction preserves everything.
+After recovery, reconcile project records and unfinished obligations first.
